@@ -1,0 +1,14 @@
+# Python bytecode files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment variables
+.env
+
+# Configuration files (if sensitive)
+config/credentials.yaml
+
+# Log files
+logs/
