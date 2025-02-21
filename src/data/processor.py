@@ -67,6 +67,9 @@ class DataProcessor:
             # Momentum features
             self._add_momentum_features(df)
             
+            # Market regime features
+            self._add_regime_features(df)
+            
             # Clean up
             df.dropna(inplace=True)
             
@@ -96,7 +99,7 @@ class DataProcessor:
             df['rsi'] = talib.RSI(df['close'], timeperiod=14)
             
             # Bollinger Bands
-            df['bb_upper'], df['bb_middle'], df['bb_lower'] = talib.BBANDS(
+            df['bbands_upper'], df['bbands_middle'], df['bbands_lower'] = talib.BBANDS(
                 df['close'],
                 timeperiod=20,
                 nbdevup=2,
@@ -160,6 +163,27 @@ class DataProcessor:
         except Exception as e:
             logger.error(f"Error adding momentum features: {str(e)}")
             raise DataError.DataValidationError("Failed to add momentum features")
+    
+    def _add_regime_features(self, df: pd.DataFrame) -> None:
+        """Add market regime features"""
+        try:
+            # Trend strength
+            df['trend_strength'] = abs(df['close'] - df['price_ma_50']) / df['price_ma_50']
+            
+            # Volatility regime
+            df['vol_regime'] = df['volatility_20'] > df['volatility_20'].rolling(50).mean()
+            
+            # Volume regime
+            df['vol_trend'] = df['volume'] > df['volume_ma']
+            
+            # Market efficiency ratio
+            df['efficiency_ratio'] = abs(df['close'] - df['close'].shift(20)) / (
+                df['high'].rolling(20).max() - df['low'].rolling(20).min()
+            )
+            
+        except Exception as e:
+            logger.error(f"Error adding regime features: {str(e)}")
+            raise DataError.DataValidationError("Failed to add regime features")
     
     @staticmethod
     def _ichimoku_conversion(df: pd.DataFrame, period: int) -> pd.Series:
@@ -264,20 +288,3 @@ class DataProcessor:
         except Exception as e:
             logger.error(f"Error preparing features: {str(e)}")
             raise DataError.DataValidationError("Failed to prepare features")
-
-# Example usage:
-if __name__ == "__main__":
-    processor = DataProcessor()
-    
-    # Get and process data for a symbol
-    symbol = "BTC/USD"
-    mtf_data = processor.get_multi_timeframe_data(symbol)
-    
-    # Calculate correlations
-    symbols = ["BTC/USD", "ETH/USD"]
-    corr_matrix = processor.calculate_correlation(tuple(symbols), "1h")
-    
-    # Prepare features for modeling
-    features = processor.prepare_features(mtf_data, ['close', 'volume', 'rsi', 'macd'])
-    
-    print("Data processing complete")

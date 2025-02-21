@@ -51,6 +51,22 @@ class OHLCV(Base):
     close = Column(Float, nullable=False)
     volume = Column(Float, nullable=False)
 
+class Performance(Base):
+    """Performance metrics table"""
+    __tablename__ = 'performance'
+    
+    id = Column(Integer, primary_key=True)
+    timestamp = Column(DateTime, nullable=False)
+    equity = Column(Float, nullable=False)
+    realized_pnl = Column(Float, nullable=False)
+    unrealized_pnl = Column(Float)
+    total_trades = Column(Integer)
+    win_rate = Column(Float)
+    sharpe_ratio = Column(Float)
+    sortino_ratio = Column(Float)
+    max_drawdown = Column(Float)
+    volatility = Column(Float)
+
 class DatabaseManager:
     _instance = None
     
@@ -139,6 +155,20 @@ class DatabaseManager:
             logger.error(f"Failed to store OHLCV data: {str(e)}")
             raise DatabaseError("Failed to store OHLCV data")
     
+    def store_performance(self, metrics: dict) -> None:
+        """Store performance metrics"""
+        try:
+            with self.get_session() as session:
+                perf = Performance(
+                    timestamp=datetime.utcnow(),
+                    **metrics
+                )
+                session.add(perf)
+                logger.info("Stored performance metrics")
+        except Exception as e:
+            logger.error(f"Failed to store performance metrics: {str(e)}")
+            raise DatabaseError("Failed to store performance metrics")
+    
     def get_trades(self, symbol: str = None, start_time: datetime = None,
                   end_time: datetime = None, status: str = None) -> pd.DataFrame:
         """Retrieve trade records"""
@@ -217,33 +247,41 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to retrieve OHLCV data: {str(e)}")
             raise DatabaseError("Failed to retrieve OHLCV data")
+    
+    def get_performance_metrics(self, start_time: datetime = None,
+                              end_time: datetime = None) -> pd.DataFrame:
+        """Retrieve performance metrics"""
+        try:
+            with self.get_session() as session:
+                query = session.query(Performance)
+                
+                if start_time:
+                    query = query.filter(Performance.timestamp >= start_time)
+                if end_time:
+                    query = query.filter(Performance.timestamp <= end_time)
+                
+                records = query.all()
+                
+                # Convert to DataFrame
+                data = []
+                for record in records:
+                    data.append({
+                        'timestamp': record.timestamp,
+                        'equity': record.equity,
+                        'realized_pnl': record.realized_pnl,
+                        'unrealized_pnl': record.unrealized_pnl,
+                        'total_trades': record.total_trades,
+                        'win_rate': record.win_rate,
+                        'sharpe_ratio': record.sharpe_ratio,
+                        'sortino_ratio': record.sortino_ratio,
+                        'max_drawdown': record.max_drawdown,
+                        'volatility': record.volatility
+                    })
+                
+                return pd.DataFrame(data)
+        except Exception as e:
+            logger.error(f"Failed to retrieve performance metrics: {str(e)}")
+            raise DatabaseError("Failed to retrieve performance metrics")
 
 # Global database instance
 db = DatabaseManager()
-
-# Example usage:
-if __name__ == "__main__":
-    # Store a trade
-    trade_data = {
-        'symbol': 'BTC/USD',
-        'side': 'buy',
-        'entry_price': 50000.0,
-        'amount': 0.1,
-        'entry_time': datetime.utcnow(),
-        'status': 'open',
-        'strategy': 'momentum',
-        'parameters': {'rsi_period': 14, 'ma_period': 50}
-    }
-    db.store_trade(trade_data)
-    
-    # Create sample OHLCV data
-    ohlcv_data = pd.DataFrame({
-        'open': [50000, 50100, 50200],
-        'high': [50500, 50600, 50700],
-        'low': [49800, 49900, 50000],
-        'close': [50100, 50200, 50300],
-        'volume': [100, 120, 110]
-    }, index=pd.date_range(start=datetime.utcnow(), periods=3, freq='1h'))
-    
-    # Store OHLCV data
-    db.store_ohlcv('BTC/USD', '1h', ohlcv_data)

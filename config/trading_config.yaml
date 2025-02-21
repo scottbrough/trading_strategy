@@ -1,0 +1,37 @@
+ga_params:
+  population_size: 35
+  generations: 10
+  cx_prob: 0.6
+  mut_prob: 0.3
+  parallel_cores: 4
+
+trading_params:
+  initial_balance: 10000
+  daily_trade_limit: 20
+  min_profit_threshold: 0.003
+  max_open_positions: 10
+  compound_frequency: 24
+  monthly_injection: 200.0
+  transaction_fee_rate: 0.001
+
+risk_params:
+  max_drawdown: 0.15
+  max_position_size: 0.2
+  min_position_size: 0.01
+  max_risk_per_trade: 0.02
+  max_daily_loss: 0.05
+  max_correlation: 0.7
+  var_limit: -0.1
+
+optimization_params:
+  rsi_range: [20, 40]
+  rsi_overbought_range: [60, 80]
+  risk_fraction_range: [0.05, 0.15]
+  partial_tp_1_range: [0.5, 2.0]
+  partial_tp_2_range: [1.5, 3.0]
+  trail_stop_mult_range: [0.3, 1.5]
+  time_limit_range: [4, 12]
+  adx_threshold_range: [15, 30]
+  volume_threshold_range: [0.8, 1.5]
+  momentum_mult_range: [0.5, 2.0]
+  trend_strength_mult_range: [1.0, 3.0]

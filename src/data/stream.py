@@ -26,6 +26,7 @@ logger = log_manager.get_logger(__name__)
 
 class KrakenStreamManager:
     def __init__(self):
+        self.config = config
         self.api_key = config.get('exchange.api_key')
         self.api_secret = config.get('exchange.api_secret')
         self.ws_url = config.get('exchange.websocket_url')
@@ -175,53 +176,75 @@ class KrakenStreamManager:
     
     def _process_trade(self, symbol: str, trade_data: List):
         """Process trade data"""
-        for trade in trade_data:
-            trade_record = {
-                'price': float(trade[0]),
-                'volume': float(trade[1]),
-                'time': datetime.fromtimestamp(float(trade[2])),
-                'side': 'buy' if trade[3] == 'b' else 'sell',
-                'type': 'market' if trade[4] == 'm' else 'limit'
-            }
-            self.trades[symbol].append(trade_record)
-            
-            # Trigger callbacks
-            for callback in self.callbacks['trade']:
-                callback(symbol, trade_record)
+        try:
+            for trade in trade_data:
+                trade_record = {
+                    'price': float(trade[0]),
+                    'volume': float(trade[1]),
+                    'time': datetime.fromtimestamp(float(trade[2])),
+                    'side': 'buy' if trade[3] == 'b' else 'sell',
+                    'type': 'market' if trade[4] == 'm' else 'limit'
+                }
+                self.trades[symbol].append(trade_record)
+                
+                # Store in database
+                db.store_trade({
+                    'symbol': symbol,
+                    'side': trade_record['side'],
+                    'price': trade_record['price'],
+                    'amount': trade_record['volume'],
+                    'timestamp': trade_record['time'],
+                    'type': trade_record['type']
+                })
+                
+                # Trigger callbacks
+                for callback in self.callbacks['trade']:
+                    callback(symbol, trade_record)
+                    
+        except Exception as e:
+            logger.error(f"Error processing trade: {str(e)}")
     
     def _process_ohlc(self, symbol: str, ohlc_data: List):
         """Process OHLCV data"""
-        candle = {
-            'time': datetime.fromtimestamp(float(ohlc_data[0])),
-            'open': float(ohlc_data[1]),
-            'high': float(ohlc_data[2]),
-            'low': float(ohlc_data[3]),
-            'close': float(ohlc_data[4]),
-            'volume': float(ohlc_data[6])
-        }
-        self.latest_data[symbol].update(candle)
-        
-        # Store in database
-        df = pd.DataFrame([candle], index=[candle['time']])
-        db.store_ohlcv(symbol, '1m', df)
-        
-        # Trigger callbacks
-        for callback in self.callbacks['ohlc']:
-            callback(symbol, candle)
+        try:
+            candle = {
+                'time': datetime.fromtimestamp(float(ohlc_data[0])),
+                'open': float(ohlc_data[1]),
+                'high': float(ohlc_data[2]),
+                'low': float(ohlc_data[3]),
+                'close': float(ohlc_data[4]),
+                'volume': float(ohlc_data[6])
+            }
+            self.latest_data[symbol].update(candle)
+            
+            # Store in database
+            df = pd.DataFrame([candle], index=[candle['time']])
+            db.store_ohlcv(symbol, '1m', df)
+            
+            # Trigger callbacks
+            for callback in self.callbacks['ohlc']:
+                callback(symbol, candle)
+                
+        except Exception as e:
+            logger.error(f"Error processing OHLCV data: {str(e)}")
     
     def _process_orderbook(self, symbol: str, book_data: Dict):
         """Process orderbook updates"""
-        for side in ['asks', 'bids']:
-            if side in book_data:
-                for price, volume, timestamp in book_data[side]:
-                    if float(volume) == 0:
-                        self.orderbook[symbol][side].pop(float(price), None)
-                    else:
-                        self.orderbook[symbol][side][float(price)] = float(volume)
-        
-        # Trigger callbacks
-        for callback in self.callbacks['book']:
-            callback(symbol, self.orderbook[symbol])
+        try:
+            for side in ['asks', 'bids']:
+                if side in book_data:
+                    for price, volume, timestamp in book_data[side]:
+                        if float(volume) == 0:
+                            self.orderbook[symbol][side].pop(float(price), None)
+                        else:
+                            self.orderbook[symbol][side][float(price)] = float(volume)
+            
+            # Trigger callbacks
+            for callback in self.callbacks['book']:
+                callback(symbol, self.orderbook[symbol])
+                
+        except Exception as e:
+            logger.error(f"Error processing orderbook: {str(e)}")
     
     def add_callback(self, channel: str, callback: Callable):
         """Add callback function for specific channel"""
@@ -276,33 +299,3 @@ class KrakenStreamManager:
         if self.ws:
             asyncio.create_task(self.ws.close())
         logger.info("Data stream stopped")
-
-# Example usage:
-if __name__ == "__main__":
-    stream = KrakenStreamManager()
-    
-    def print_trade(symbol: str, trade: dict):
-        print(f"Trade: {symbol} - {trade}")
-    
-    def print_candle(symbol: str, candle: dict):
-        print(f"Candle: {symbol} - {candle}")
-    
-    async def main():
-        # Add callbacks
-        stream.add_callback('trade', print_trade)
-        stream.add_callback('ohlc', print_candle)
-        
-        # Start processing thread
-        stream.start_processing()
-        
-        # Connect and subscribe
-        await stream.connect()
-        await stream.subscribe(['BTC/USD'], ['trade', 'ohlc'])
-        
-        # Run the stream
-        await stream.run()
-    
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        stream.stop()

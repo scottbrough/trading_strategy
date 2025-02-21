@@ -57,8 +57,14 @@ class ConfigManager:
         try:
             # Load main configuration
             config_path = self.config_dir / 'config.yaml'
+            trading_config_path = self.config_dir / 'trading_config.yaml'
+            
             with open(config_path) as f:
                 self.config = yaml.safe_load(f)
+            
+            with open(trading_config_path) as f:
+                trading_config = yaml.safe_load(f)
+                self.config.update(trading_config)
             
             # Substitute environment variables
             self._substitute_env_vars(self.config)
@@ -101,6 +107,14 @@ class ConfigManager:
         ex_config = self.config['exchange']
         if not all(k in ex_config for k in ['name', 'sandbox', 'api_url', 'websocket_url']):
             raise ValueError("Invalid exchange configuration")
+        
+        # Validate trading parameters
+        if 'trading_params' not in self.config:
+            raise ValueError("Missing trading parameters")
+        
+        # Validate optimization parameters
+        if 'optimization_params' not in self.config:
+            raise ValueError("Missing optimization parameters")
     
     def get(self, key: str, default: Any = None) -> Any:
         """Get configuration value by key"""
@@ -127,7 +141,15 @@ class ConfigManager:
     
     def get_risk_params(self) -> dict:
         """Get risk management parameters"""
-        return self.config['strategy']['risk']
+        return self.config['risk_params']
+    
+    def get_trading_params(self) -> dict:
+        """Get trading parameters"""
+        return self.config['trading_params']
+    
+    def get_optimization_params(self) -> dict:
+        """Get optimization parameters"""
+        return self.config['optimization_params']
     
     def get_monitoring_config(self) -> dict:
         """Get monitoring configuration"""

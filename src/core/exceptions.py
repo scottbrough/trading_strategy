@@ -12,19 +12,58 @@ class DatabaseError(TradingSystemError):
     """Exception raised for database-related errors."""
     pass
 
-class DataError(TradingSystemError):
-    """Exception raised for data processing errors."""
+class DataError:
+    """Container for data-related errors."""
+    
     class DataValidationError(TradingSystemError):
+        """Exception raised for data validation errors."""
+        pass
+    
+    class DataFetchError(TradingSystemError):
+        """Exception raised for data fetching errors."""
+        pass
+    
+    class DataProcessingError(TradingSystemError):
+        """Exception raised for data processing errors."""
         pass
 
 class DataStreamError(TradingSystemError):
     """Exception raised for errors in data streaming."""
-    pass
+    
+    class ConnectionError(TradingSystemError):
+        """Exception raised for connection issues."""
+        pass
+    
+    class SubscriptionError(TradingSystemError):
+        """Exception raised for subscription issues."""
+        pass
 
 class StrategyError(TradingSystemError):
     """Exception raised for strategy-related errors."""
-    pass
+    
+    class ValidationError(TradingSystemError):
+        """Exception raised for strategy validation errors."""
+        pass
+    
+    class OptimizationError(TradingSystemError):
+        """Exception raised for optimization errors."""
+        pass
+    
+    class BacktestError(TradingSystemError):
+        """Exception raised for backtesting errors."""
+        pass
 
 class ExecutionError(TradingSystemError):
     """Exception raised for order execution errors."""
-    pass
+    
+    class OrderError(TradingSystemError):
+        """Exception raised for order-related errors."""
+        pass
+    
+    class PositionError(TradingSystemError):
+        """Exception raised for position-related errors."""
+        pass
+    
+    class LimitError(TradingSystemError):
+        """Exception raised for trading limit violations."""
+        pass

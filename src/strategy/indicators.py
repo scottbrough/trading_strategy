@@ -1,155 +1,347 @@
-"""
+def _add_bollinger_bands(self, df: pd.DataFrame) -> None:
+        """Add Bollinger Bands and derived indicators"""
+        try:
+            df['bb_upper'], df['bb_middle'], df['bb_lower'] = talib.BBANDS(
+                df['close'],
+                timeperiod=self.config.bb_period,
+                nbdevup=self.config.bb_stddev,
+                nbdevdn=self.config.bb_stddev
+            )
+            
+            # Add BB width and %B indicators
+            df['bb_width'] = (df['bb_upper'] - df['bb_lower']) / df['bb_middle']
+            df['bb_pct_b'] = (df['close'] - df['bb_lower']) / (df['bb_upper'] - df['bb_lower'])
+            
+        except Exception as e:
+            logger.error(f"Error adding Bollinger Bands: {str(e)}")
+            raise
+    
+    def _add_stochastic(self, df: pd.DataFrame) -> None:
+        """Add Stochastic indicators"""
+        try:
+            df['slowk'], df['slowd'] = talib.STOCH(
+                df['high'],
+                df['low'],
+                df['close'],
+                fastk_period=self.config.stoch_k,
+                slowk_period=self.config.stoch_smooth,
+                slowk_matype=0,
+                slowd_period=self.config.stoch_d,
+                slowd_matype=0
+            )
+            
+            # Add Stochastic RSI
+            df['stoch_rsi'] = talib.STOCHRSI(
+                df['close'],
+                timeperiod=self.config.rsi_period,
+                fastk_period=self.config.stoch_k,
+                fastd_period=self.config.stoch_d
+            )
+            
+        except Exception as e:
+            logger.error(f"Error adding Stochastic: {str(e)}")
+            raise
+    
+    def _add_adx(self, df: pd.DataFrame) -> None:
+        """Add ADX and DMI indicators"""
+        try:
+            df['adx'] = talib.ADX(
+                df['high'],
+                df['low'],
+                df['close'],
+                timeperiod=self.config.adx_period
+            )
+            
+            # Add DI+ and DI-
+            df['plus_di'] = talib.PLUS_DI(
+                df['high'],
+                df['low'],
+                df['close'],
+                timeperiod=self.config.adx_period
+            )
+            df['minus_di'] = talib.MINUS_DI(
+                df['high'],
+                df['low'],
+                df['close'],
+                timeperiod=self.config.adx_period
+            )
+            
+            # Add ADX trend strength
+            df['adx_trend'] = np.where(
+                df['adx'] > 25,
+                np.where(df['plus_di'] > df['minus_di'], 1, -1),
+                0
+            )
+            
+        except Exception as e:
+            logger.error(f"Error adding ADX: {str(e)}")
+            raise
+    
+    def _add_atr(self, df: pd.DataFrame) -> None:
+        """Add ATR and derived indicators"""
+        try:
+            df['atr'] = talib.ATR(
+                df['high'],
+                df['low'],
+                df['close'],
+                timeperiod=self.config.atr_period
+            )
+            
+            # Add normalized ATR
+            df['atr_pct'] = df['atr'] / df['close'] * 100
+            
+            # Add ATR-based channels
+            df['atr_upper'] = df['close'] + (df['atr'] * 2)
+            df['atr_lower'] = df['close'] - (df['atr'] * 2)
+            
+        except Exception as e:
+            logger.error(f"Error adding ATR: {str(e)}")
+            raise
+    
+    def _add_momentum(self, df: pd.DataFrame) -> None:
+        """Add momentum indicators"""
+        try:
+            # ROC
+            df['roc'] = talib.ROC(df['close'], timeperiod=10)
+            
+            # Momentum
+            df['mom'] = talib.MOM(df['close'], timeperiod=10)
+            
+            # PPO
+            df['ppo'] = talib.PPO(df['close'])
+            
+            # Add custom momentum score
+            def momentum_score(data: pd.DataFrame) -> pd.Series:
+                roc_norm = (data['roc'] - data['roc'].mean()) / data['roc'].std()
+                mom_norm = (data['mom'] - data['mom'].mean()) / data['mom'].std()
+                ppo_norm = (data['ppo'] - data['ppo'].mean()) / data['ppo'].std()
+                
+                return (roc_norm + mom_norm + ppo_norm) / 3
+            
+            df['momentum_score'] = momentum_score(df)
+            
+        except Exception as e:
+            logger.error(f"Error adding momentum indicators: {str(e)}")
+            raise
+    
+    def _add_volume_indicators(self, df: pd.DataFrame) -> None:
+        """Add volume-based indicators"""
+        try:
+            # OBV
+            df['obv'] = talib.OBV(df['close'], df['volume'])
+            
+            # Volume MA
+            df['volume_sma'] = talib.SMA(df['volume'], timeperiod=self.config.volume_ma_period)
+            df['volume_ratio'] = df['volume'] / df['volume_sma']
+            
+            # Add volume profile
+            def volume_profile(data: pd.DataFrame, bins: int = 10) -> pd.Series:
+                price_bins = pd.qcut(data['close'], bins, duplicates='drop')
+                return data.groupby(price_bins)['volume'].sum()
+            
+            df['volume_profile'] = volume_profile(df)
+            
+            # Money Flow Index
+            df['mfi'] = talib.MFI(
+                df['high'],
+                df['low'],
+                df['close'],
+                df['volume'],
+                timeperiod=14
+            )
+            
+        except Exception as e:
+            logger.error(f"Error adding volume indicators: {str(e)}")
+            raise
+    
+    def _add_custom_indicators(self, df: pd.DataFrame) -> None:
+        """Add custom composite indicators"""
+        try:
+            # Trend strength indicator
+            def trend_strength(data: pd.DataFrame) -> pd.Series:
+                ema_align = (data['ema_9'] > data['ema_21']) & \
+                          (data['ema_21'] > data['ema_50'])
+                adx_strong = data['adx'] > 25
+                vol_confirm = data['volume_ratio'] > 1.0
+                
+                return np.where(
+                    ema_align & adx_strong & vol_confirm,
+                    1,
+                    np.where(
+                        (~ema_align) & adx_strong & vol_confirm,
+                        -1,
+                        0
+                    )
+                )
+            
+            df['trend_strength'] = trend_strength(df)
+            
+            # Volatility regime
+            def volatility_regime(data: pd.DataFrame) -> pd.Series:
+                bb_high = data['bb_width'] > data['bb_width'].rolling(20).mean()
+                atr_high = data['atr_pct'] > data['atr_pct'].rolling(20).mean()
+                
+                return np.where(
+                    bb_high & atr_high,
+                    'high',
+                    np.where(
+                        (~bb_high) & (~atr_high),
+                        'low',
+                        'normal'
+                    )
+                )
+            
+            df['volatility_regime'] = volatility_regime(df)
+            
+            # Combined momentum signal
+            def momentum_signal(data: pd.DataFrame) -> pd.Series:
+                rsi_signal = (data['rsi'] < 30) | (data['rsi'] > 70)
+                macd_signal = data['macd_hist'] > 0
+                stoch_signal = (data['slowk'] < 20) | (data['slowk'] > 80)
+                
+                return np.where(
+                    rsi_signal & macd_signal & stoch_signal,
+                    np.where(data['rsi'] < 30, 1, -1),
+                    0
+                )
+            
+            df['momentum_signal'] = momentum_signal(df)
+            
+        except Exception as e:
+            logger.error(f"Error adding custom indicators: {str(e)}")
+            raise
 Technical indicators library for the trading system.
-
-This module provides reusable functions for calculating common technical indicators
-using TA-Lib. Strategies can import these functions to incorporate indicator values into
-their signal generation logic.
+Implements advanced indicators and custom calculations.
 """
 
 import pandas as pd
+import numpy as np
 import talib
+from typing import Tuple, Dict, Optional
+from dataclasses import dataclass
+from ..core.logger import log_manager
 
+logger = log_manager.get_logger(__name__)
 
-def calculate_rsi(close: pd.Series, timeperiod: int = 14) -> pd.Series:
-    """
-    Calculate the Relative Strength Index (RSI) for a given price series.
-    
-    Args:
-        close: A pandas Series of closing prices.
-        timeperiod: The lookback period (default 14).
-    
-    Returns:
-        A pandas Series containing the RSI values.
-    """
-    return talib.RSI(close, timeperiod=timeperiod)
+@dataclass
+class IndicatorConfig:
+    """Configuration for indicator calculations"""
+    rsi_period: int = 14
+    macd_fast: int = 12
+    macd_slow: int = 26
+    macd_signal: int = 9
+    bb_period: int = 20
+    bb_stddev: float = 2.0
+    atr_period: int = 14
+    ema_periods: Tuple[int, ...] = (9, 21, 50, 200)
+    stoch_k: int = 14
+    stoch_d: int = 3
+    stoch_smooth: int = 3
+    adx_period: int = 14
+    volume_ma_period: int = 20
 
-
-def calculate_macd(close: pd.Series, fastperiod: int = 12, slowperiod: int = 26, signalperiod: int = 9) -> pd.DataFrame:
-    """
-    Calculate the Moving Average Convergence Divergence (MACD).
+class TechnicalIndicators:
+    def __init__(self, config: Optional[IndicatorConfig] = None):
+        """Initialize with optional custom configuration"""
+        self.config = config or IndicatorConfig()
+        self._cache = {}
     
-    Args:
-        close: A pandas Series of closing prices.
-        fastperiod: The short-term EMA period (default 12).
-        slowperiod: The long-term EMA period (default 26).
-        signalperiod: The signal line EMA period (default 9).
+    def calculate_all(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Calculate all technical indicators"""
+        try:
+            df = df.copy()
+            
+            # Trend indicators
+            self._add_moving_averages(df)
+            self._add_macd(df)
+            self._add_adx(df)
+            
+            # Momentum indicators
+            self._add_rsi(df)
+            self._add_stochastic(df)
+            self._add_momentum(df)
+            
+            # Volatility indicators
+            self._add_bollinger_bands(df)
+            self._add_atr(df)
+            
+            # Volume indicators
+            self._add_volume_indicators(df)
+            
+            # Custom indicators
+            self._add_custom_indicators(df)
+            
+            return df
+            
+        except Exception as e:
+            logger.error(f"Error calculating indicators: {str(e)}")
+            raise
     
-    Returns:
-        A DataFrame with columns 'macd', 'signal', and 'hist' representing the MACD line, signal line, and histogram.
-    """
-    macd, signal, hist = talib.MACD(close, fastperiod=fastperiod, slowperiod=slowperiod, signalperiod=signalperiod)
-    return pd.DataFrame({
-        "macd": macd,
-        "signal": signal,
-        "hist": hist
-    })
-
-
-def calculate_bbands(close: pd.Series, timeperiod: int = 20, nbdevup: int = 2, nbdevdn: int = 2) -> pd.DataFrame:
-    """
-    Calculate Bollinger Bands.
+    def _add_moving_averages(self, df: pd.DataFrame) -> None:
+        """Add various moving averages"""
+        try:
+            for period in self.config.ema_periods:
+                df[f'ema_{period}'] = talib.EMA(df['close'], timeperiod=period)
+                df[f'sma_{period}'] = talib.SMA(df['close'], timeperiod=period)
+            
+            # Add hull moving average
+            def hull_ma(data: pd.Series, period: int) -> pd.Series:
+                half_period = period // 2
+                sqrt_period = int(np.sqrt(period))
+                
+                wma1 = talib.WMA(data, timeperiod=half_period)
+                wma2 = talib.WMA(data, timeperiod=period)
+                diff = 2 * wma1 - wma2
+                return talib.WMA(diff, timeperiod=sqrt_period)
+            
+            df['hull_ma'] = hull_ma(df['close'], 20)
+            
+        except Exception as e:
+            logger.error(f"Error adding moving averages: {str(e)}")
+            raise
     
-    Args:
-        close: A pandas Series of closing prices.
-        timeperiod: The moving average period (default 20).
-        nbdevup: Number of standard deviations above the moving average (default 2).
-        nbdevdn: Number of standard deviations below the moving average (default 2).
+    def _add_macd(self, df: pd.DataFrame) -> None:
+        """Add MACD indicator"""
+        try:
+            df['macd'], df['macd_signal'], df['macd_hist'] = talib.MACD(
+                df['close'],
+                fastperiod=self.config.macd_fast,
+                slowperiod=self.config.macd_slow,
+                signalperiod=self.config.macd_signal
+            )
+            
+            # Add normalized MACD
+            df['macd_norm'] = df['macd'] / df['close']
+            
+        except Exception as e:
+            logger.error(f"Error adding MACD: {str(e)}")
+            raise
     
-    Returns:
-        A DataFrame with columns 'upper', 'middle', and 'lower' representing the Bollinger Bands.
-    """
-    upper, middle, lower = talib.BBANDS(close, timeperiod=timeperiod, nbdevup=nbdevup, nbdevdn=nbdevdn)
-    return pd.DataFrame({
-        "upper": upper,
-        "middle": middle,
-        "lower": lower
-    })
-
-
-def calculate_adx(high: pd.Series, low: pd.Series, close: pd.Series, timeperiod: int = 14) -> pd.Series:
-    """
-    Calculate the Average Directional Index (ADX) to measure trend strength.
+    def _add_rsi(self, df: pd.DataFrame) -> None:
+        """Add RSI and derived indicators"""
+        try:
+            df['rsi'] = talib.RSI(df['close'], timeperiod=self.config.rsi_period)
+            
+            # Add RSI moving average
+            df['rsi_ma'] = talib.SMA(df['rsi'], timeperiod=self.config.rsi_period)
+            
+            # Add RSI divergence
+            def calculate_divergence(price: pd.Series, rsi: pd.Series, window: int = 14) -> pd.Series:
+                price_min = price.rolling(window=window).min()
+                price_max = price.rolling(window=window).max()
+                rsi_min = rsi.rolling(window=window).min()
+                rsi_max = rsi.rolling(window=window).max()
+                
+                bearish = (price_max > price_max.shift(1)) & (rsi_max < rsi_max.shift(1))
+                bullish = (price_min < price_min.shift(1)) & (rsi_min > rsi_min.shift(1))
+                
+                return pd.Series(index=price.index, data=np.where(bearish, -1, np.where(bullish, 1, 0)))
+            
+            df['rsi_divergence'] = calculate_divergence(df['close'], df['rsi'])
+            
+        except Exception as e:
+            logger.error(f"Error adding RSI: {str(e)}")
+            raise
     
-    Args:
-        high: A pandas Series of high prices.
-        low: A pandas Series of low prices.
-        close: A pandas Series of closing prices.
-        timeperiod: The period over which to calculate ADX (default 14).
-    
-    Returns:
-        A pandas Series containing the ADX values.
-    """
-    return talib.ADX(high, low, close, timeperiod=timeperiod)
-
-
-def calculate_ema(close: pd.Series, timeperiod: int = 20) -> pd.Series:
-    """
-    Calculate the Exponential Moving Average (EMA).
-    
-    Args:
-        close: A pandas Series of closing prices.
-        timeperiod: The period for the EMA (default 20).
-    
-    Returns:
-        A pandas Series containing the EMA values.
-    """
-    return talib.EMA(close, timeperiod=timeperiod)
-
-
-def calculate_stochastic(high: pd.Series, low: pd.Series, close: pd.Series,
-                         fastk_period: int = 14, slowk_period: int = 3, slowk_matype: int = 0,
-                         slowd_period: int = 3, slowd_matype: int = 0) -> pd.DataFrame:
-    """
-    Calculate the Stochastic Oscillator.
-    
-    Args:
-        high: A pandas Series of high prices.
-        low: A pandas Series of low prices.
-        close: A pandas Series of closing prices.
-        fastk_period: The fast %K period (default 14).
-        slowk_period: The slow %K period (default 3).
-        slowk_matype: The moving average type for slow %K (default 0).
-        slowd_period: The slow %D period (default 3).
-        slowd_matype: The moving average type for slow %D (default 0).
-    
-    Returns:
-        A DataFrame with columns 'slowk' and 'slowd' representing the stochastic oscillator.
-    """
-    slowk, slowd = talib.STOCH(high, low, close,
-                               fastk_period=fastk_period,
-                               slowk_period=slowk_period,
-                               slowk_matype=slowk_matype,
-                               slowd_period=slowd_period,
-                               slowd_matype=slowd_matype)
-    return pd.DataFrame({
-        "slowk": slowk,
-        "slowd": slowd
-    })
-
-
-def calculate_ichimoku(high: pd.Series, low: pd.Series, close: pd.Series,
-                       conversion_line_period: int = 9, base_line_period: int = 26, leading_span_b_period: int = 52) -> pd.DataFrame:
-    """
-    Calculate Ichimoku Cloud components.
-    
-    Args:
-        high: A pandas Series of high prices.
-        low: A pandas Series of low prices.
-        close: A pandas Series of closing prices.
-        conversion_line_period: Period for the conversion line (default 9).
-        base_line_period: Period for the base line (default 26).
-        leading_span_b_period: Period for the leading span B (default 52).
-    
-    Returns:
-        A DataFrame with columns 'conversion_line', 'base_line', 'leading_span_a', and 'leading_span_b'.
-    """
-    conversion_line = (high.rolling(window=conversion_line_period).max() + low.rolling(window=conversion_line_period).min()) / 2
-    base_line = (high.rolling(window=base_line_period).max() + low.rolling(window=base_line_period).min()) / 2
-    leading_span_a = ((conversion_line + base_line) / 2).shift(base_line_period)
-    leading_span_b = ((high.rolling(window=leading_span_b_period).max() + low.rolling(window=leading_span_b_period).min()) / 2).shift(base_line_period)
-    return pd.DataFrame({
-        "conversion_line": conversion_line,
-        "base_line": base_line,
-        "leading_span_a": leading_span_a,
-        "leading_span_b": leading_span_b
-    })
+    def _add_bollinger_bands(self, df: pd.DataFrame) -> None:
+        """

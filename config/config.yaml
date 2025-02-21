@@ -1,0 +1,63 @@
+environment: sandbox
+
+database:
+  type: postgresql
+  host: ${DB_HOST}
+  port: ${DB_PORT}
+  name: ${DB_NAME}
+  user: ${DB_USER}
+  password: ${DB_PASSWORD}
+
+exchange:
+  name: kraken
+  sandbox: true
+  api_url: ${KRAKEN_API_URL}
+  websocket_url: ${KRAKEN_WS_URL}
+  api_key: ${KRAKEN_API_KEY}
+  api_secret: ${KRAKEN_API_SECRET}
+  rate_limit: 0.2  # requests per second
+
+data:
+  symbols:
+    - BTC/USD
+    - ETH/USD
+  timeframes:
+    - 1m
+    - 5m
+    - 15m
+    - 1h
+    - 4h
+    - 1d
+  cache_size: 1000
+  update_interval: 1
+
+strategy:
+  default_strategy: enhanced
+  risk:
+    max_drawdown: 0.15
+    max_position_size: 0.2
+    min_position_size: 0.01
+    max_risk_per_trade: 0.02
+    max_daily_loss: 0.05
+    max_correlation: 0.7
+    var_limit: -0.1
+    account_balance: ${ACCOUNT_BALANCE}
+  parameters:
+    rsi_period: 14
+    ma_period: 20
+    volatility_period: 20
+    profit_target: 0.02
+    stop_loss: 0.01
+
+monitoring:
+  dashboard_port: 8050
+  update_interval: 5
+  metrics:
+    - pnl
+    - win_rate
+    - sharpe_ratio
+    - max_drawdown
+    - volatility
+  alerts:
+    slack_webhook: ${SLACK_WEBHOOK}
+    email: ${ALERT_EMAIL}

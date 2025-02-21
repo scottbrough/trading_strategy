@@ -1,0 +1,131 @@
+# Crypto Trading Strategy System
+
+A comprehensive cryptocurrency trading system with optimized strategies, risk management, and real-time monitoring.
+
+## Features
+
+- Genetic algorithm optimization for trading parameters
+- Enhanced risk management with dynamic position sizing
+- Multi-timeframe analysis
+- Real-time market data streaming
+- Performance monitoring dashboard
+- Comprehensive backtesting engine
+- Kraken sandbox environment integration
+
+## Setup
+
+1. Create and activate virtual environment:
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: .\venv\Scripts\activate
+```
+
+2. Install dependencies:
+```bash
+pip install -e .
+```
+
+3. Create required directories:
+```bash
+mkdir -p data logs results config
+```
+
+4. Configure environment:
+```bash
+cp config/.env.template config/.env
+# Edit .env with your settings
+```
+
+5. Install TA-Lib (System dependent):
+
+Ubuntu/Debian:
+```bash
+sudo apt-get install ta-lib
+```
+
+macOS:
+```bash
+brew install ta-lib
+```
+
+Windows:
+Download and install from [TA-Lib Windows](http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-msvc.zip)
+
+## Configuration
+
+1. Edit `config/config.yaml` with your database and exchange settings
+2. Edit `config/trading_config.yaml` with your trading parameters
+3. Set up your API keys in `.env`
+
+## Usage
+
+1. Fetch historical data:
+```bash
+python src/scripts/run_system.py --mode fetch
+```
+
+2. Run optimization:
+```bash
+python src/scripts/run_system.py --mode optimize
+```
+
+3. Start backtesting:
+```bash
+python src/scripts/run_system.py --mode backtest
+```
+
+4. Launch dashboard:
+```bash
+python src/scripts/run_system.py --mode dashboard
+```
+
+## Project Structure
+
+```
+trading_strategy/
+├── config/                # Configuration files
+├── data/                  # Historical data storage
+├── logs/                  # System logs
+├── results/               # Optimization results
+└── src/
+    ├── core/             # Core system components
+    ├── data/             # Data handling
+    ├── strategy/         # Trading strategies
+    ├── monitoring/       # Dashboard and monitoring
+    └── scripts/          # Runner scripts
+```
+
+## Testing
+
+Run tests:
+```bash
+pytest tests/
+```
+
+## Development Workflow
+
+1. Test strategies in Kraken's sandbox environment
+2. Optimize parameters using historical data
+3. Run backtests to validate performance
+4. Monitor system through the dashboard
+5. Analyze logs and results for improvements
+
+## Risk Management
+
+- Implements Kelly Criterion for position sizing
+- Dynamic risk adjustment based on market conditions
+- Multi-level stop-loss mechanisms
+- Portfolio correlation checks
+- Maximum drawdown controls
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
