@@ -1,42 +1,39 @@
-# Crypto Trading Strategy System
+# Advanced Cryptocurrency Trading System
 
-A comprehensive cryptocurrency trading system with optimized strategies, risk management, and real-time monitoring.
+A sophisticated cryptocurrency trading system with multiple strategies, real-time monitoring, and risk management.
 
 ## Features
 
-- Genetic algorithm optimization for trading parameters
-- Enhanced risk management with dynamic position sizing
-- Multi-timeframe analysis
-- Real-time market data streaming
+- Multiple optimized trading strategies:
+  - Momentum Trading
+  - Trend Following
+  - Mean Reversion
+- Real-time data streaming from Kraken
+- Advanced risk management system
 - Performance monitoring dashboard
-- Comprehensive backtesting engine
-- Kraken sandbox environment integration
+- Automated backtesting and optimization
+- Comprehensive logging and error handling
 
-## Setup
+## Installation
 
-1. Create and activate virtual environment:
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/trading_strategy.git
+cd trading_strategy
+```
+
+2. Create and activate virtual environment:
 ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: .\venv\Scripts\activate
 ```
 
-2. Install dependencies:
+3. Install dependencies:
 ```bash
-pip install -e .
+pip install -r requirements.txt
 ```
 
-3. Create required directories:
-```bash
-mkdir -p data logs results config
-```
-
-4. Configure environment:
-```bash
-cp config/.env.template config/.env
-# Edit .env with your settings
-```
-
-5. Install TA-Lib (System dependent):
+4. Install TA-Lib (platform specific):
 
 Ubuntu/Debian:
 ```bash
@@ -53,70 +50,167 @@ Download and install from [TA-Lib Windows](http://prdownloads.sourceforge.net/ta
 
 ## Configuration
 
-1. Edit `config/config.yaml` with your database and exchange settings
-2. Edit `config/trading_config.yaml` with your trading parameters
-3. Set up your API keys in `.env`
+1. Copy environment template:
+```bash
+cp config/.env.template config/.env
+```
+
+2. Edit `.env` with your settings:
+- Database credentials
+- Kraken API keys
+- Trading parameters
+- Alert settings
+
+3. Configure trading parameters in `config/trading_config.yaml`:
+- Risk management settings
+- Strategy parameters
+- Optimization settings
 
 ## Usage
 
-1. Fetch historical data:
+1. Start in Paper Trading Mode (Recommended for Testing):
 ```bash
-python src/scripts/run_system.py --mode fetch
+python scripts/deploy.py --mode paper
 ```
 
-2. Run optimization:
+2. Run Backtesting:
 ```bash
-python src/scripts/run_system.py --mode optimize
+python scripts/deploy.py --mode backtest
 ```
 
-3. Start backtesting:
+3. Start Live Trading (Only after thorough testing):
 ```bash
-python src/scripts/run_system.py --mode backtest
+python scripts/deploy.py --mode full
 ```
 
-4. Launch dashboard:
-```bash
-python src/scripts/run_system.py --mode dashboard
-```
+4. Access the Dashboard:
+- Open `http://localhost:8050` in your browser
+- Monitor performance metrics
+- View active trades
+- Track system health
 
-## Project Structure
+## System Components
 
-```
-trading_strategy/
-├── config/                # Configuration files
-├── data/                  # Historical data storage
-├── logs/                  # System logs
-├── results/               # Optimization results
-└── src/
-    ├── core/             # Core system components
-    ├── data/             # Data handling
-    ├── strategy/         # Trading strategies
-    ├── monitoring/       # Dashboard and monitoring
-    └── scripts/          # Runner scripts
-```
+### Strategies
+
+1. Momentum Strategy
+- Uses RSI, MACD, and volume analysis
+- Optimized for short-term price movements
+- Configurable parameters in config.yaml
+
+2. Trend Following Strategy
+- Multi-timeframe trend analysis
+- Dynamic trend strength calculation
+- Adaptive position sizing
+
+3. Mean Reversion Strategy
+- Statistical analysis for price deviations
+- Probability-based entry signals
+- Volume-weighted position sizing
+
+### Risk Management
+
+- Kelly Criterion position sizing
+- Dynamic risk adjustment
+- Portfolio correlation controls
+- Maximum drawdown protection
+- Value at Risk (VaR) limits
+
+### Monitoring
+
+- Real-time performance metrics
+- Equity curve tracking
+- Trade distribution analysis
+- Risk metrics dashboard
+- System health monitoring
 
 ## Testing
 
-Run tests:
+Run the test suite:
 ```bash
 pytest tests/
 ```
 
+Test coverage report:
+```bash
+pytest --cov=src tests/
+```
+
 ## Development Workflow
 
-1. Test strategies in Kraken's sandbox environment
-2. Optimize parameters using historical data
-3. Run backtests to validate performance
-4. Monitor system through the dashboard
-5. Analyze logs and results for improvements
+1. Test in Sandbox:
+- Use Kraken's sandbox environment
+- Test with paper trading
+- Verify all components
 
-## Risk Management
+2. Optimize Strategies:
+- Run backtests
+- Optimize parameters
+- Validate results
 
-- Implements Kelly Criterion for position sizing
-- Dynamic risk adjustment based on market conditions
-- Multi-level stop-loss mechanisms
-- Portfolio correlation checks
-- Maximum drawdown controls
+3. Monitor Performance:
+- Track key metrics
+- Analyze trade distribution
+- Monitor risk levels
+
+4. Deploy Updates:
+- Test changes in sandbox
+- Verify system stability
+- Deploy to production
+
+## Maintenance
+
+1. Regular Tasks:
+- Check system logs daily
+- Monitor error rates
+- Review performance metrics
+- Update parameters as needed
+
+2. Database Maintenance:
+```bash
+# Backup database
+pg_dump trading_db > backup.sql
+
+# Run migrations
+alembic upgrade head
+```
+
+3. Log Management:
+```bash
+# Rotate logs
+python scripts/manage_logs.py --rotate
+
+# Archive old logs
+python scripts/manage_logs.py --archive
+```
+
+## Troubleshooting
+
+1. Connection Issues:
+- Check API credentials
+- Verify network connectivity
+- Review error logs
+
+2. Performance Issues:
+- Monitor system resources
+- Check database performance
+- Review trade execution times
+
+3. Strategy Issues:
+- Analyze backtest results
+- Review risk parameters
+- Check signal generation
+
+## Support
+
+For issues and feature requests:
+1. Check the existing issues
+2. Create a detailed bug report
+3. Include relevant logs and configurations
+
+## License
+
+MIT License - see LICENSE file for details
 
 ## Contributing
 
@@ -125,7 +219,3 @@ pytest tests/
 3. Commit your changes
 4. Push to the branch
 5. Create a Pull Request
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
