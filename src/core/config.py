@@ -26,6 +26,8 @@ class ExchangeConfig:
     sandbox: bool
     api_url: str
     websocket_url: str
+    api_key: str
+    api_secret: str
     rate_limit: float
 
 class ConfigManager:

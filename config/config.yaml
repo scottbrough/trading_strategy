@@ -2,19 +2,19 @@ environment: sandbox
 
 database:
   type: postgresql
-  host: ${DB_HOST}
-  port: ${DB_PORT}
-  name: ${DB_NAME}
-  user: ${DB_USER}
-  password: ${DB_PASSWORD}
+  host: localhost
+  port: 5432
+  name: trading_db
+  user: trading_user
+  password: scottbrough
 
 exchange:
   name: kraken
   sandbox: true
-  api_url: ${KRAKEN_API_URL}
-  websocket_url: ${KRAKEN_WS_URL}
-  api_key: ${KRAKEN_API_KEY}
-  api_secret: ${KRAKEN_API_SECRET}
+  api_url: https://demo-futures.kraken.com/derivatives
+  websocket_url: wss://demo-futures.kraken.com/ws/v1
+  api_key: 7RIQ3BKfVNxZI7tiVFJpQugOWQeXwBCxQ1iN233eS+4NaKnMa02mpnMl
+  api_secret: D1CCIpSmnSBIeDixfNlwKAw2i55sWhsJHsKnV6fkVr7mVnn+8k+IE2r5ad7bGli07S9yTwQoJWcFYVcuBc3ZROqY
   rate_limit: 0.2  # requests per second
 
 data:

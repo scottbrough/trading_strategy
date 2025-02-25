@@ -58,140 +58,6 @@ class DashboardManager:
                                 id='metrics-update',
                                 interval=5*1000  # 5 seconds
                             )
-            
-        except Exception as e:
-            logger.error(f"Error creating strategy table: {str(e)}")
-            return html.Table()
-    
-    def _get_risk_metrics(self) -> Dict:
-        """Get current risk metrics"""
-        try:
-            trades_df = db.get_trades(status='open')
-            
-            metrics = {
-                'exposure': sum(trades_df['amount'] * trades_df['entry_price']),
-                'max_drawdown': self._calculate_drawdown(),
-                'var_95': self._calculate_var(),
-                'positions': len(trades_df),
-                'largest_position': max(trades_df['amount'] * trades_df['entry_price']) if not trades_df.empty else 0
-            }
-            
-            return metrics
-            
-        except Exception as e:
-            logger.error(f"Error getting risk metrics: {str(e)}")
-            return {}
-    
-    def _create_risk_display(self, metrics: Dict) -> html.Div:
-        """Create risk metrics display"""
-        try:
-            # Create risk indicators with color coding
-            exposure_color = 'success' if metrics.get('exposure', 0) < self.config['risk_limits']['max_exposure'] else 'danger'
-            drawdown_color = 'success' if metrics.get('max_drawdown', 0) < self.config['risk_limits']['max_drawdown'] else 'danger'
-            
-            return html.Div([
-                dbc.Alert(
-                    f"Current Exposure: ${metrics.get('exposure', 0):,.2f}",
-                    color=exposure_color,
-                    className="mb-2"
-                ),
-                dbc.Alert(
-                    f"Max Drawdown: {metrics.get('max_drawdown', 0):.2%}",
-                    color=drawdown_color,
-                    className="mb-2"
-                ),
-                html.H5(f"VaR (95%): ${metrics.get('var_95', 0):,.2f}"),
-                html.H5(f"Open Positions: {metrics.get('positions', 0)}"),
-                html.H5(f"Largest Position: ${metrics.get('largest_position', 0):,.2f}")
-            ])
-            
-        except Exception as e:
-            logger.error(f"Error creating risk display: {str(e)}")
-            return html.Div("Error loading risk metrics")
-    
-    def _get_active_trades(self) -> pd.DataFrame:
-        """Get current active trades"""
-        try:
-            return db.get_trades(status='open')
-        except Exception as e:
-            logger.error(f"Error getting active trades: {str(e)}")
-            return pd.DataFrame()
-    
-    def _create_trades_table(self, trades_df: pd.DataFrame) -> dbc.Table:
-        """Create active trades table"""
-        try:
-            if trades_df.empty:
-                return html.Div("No active trades")
-            
-            # Calculate unrealized P&L
-            trades_df['unrealized_pnl'] = trades_df.apply(self._calculate_unrealized_pnl, axis=1)
-            
-            # Create table
-            table_header = [
-                html.Thead(html.Tr([
-                    html.Th("Symbol"),
-                    html.Th("Side"),
-                    html.Th("Entry Price"),
-                    html.Th("Current Price"),
-                    html.Th("Size"),
-                    html.Th("Unrealized P&L"),
-                    html.Th("Duration")
-                ]))
-            ]
-            
-            rows = []
-            for _, trade in trades_df.iterrows():
-                rows.append(html.Tr([
-                    html.Td(trade['symbol']),
-                    html.Td(trade['side']),
-                    html.Td(f"${trade['entry_price']:,.2f}"),
-                    html.Td(f"${trade['current_price']:,.2f}"),
-                    html.Td(f"{trade['amount']:.4f}"),
-                    html.Td(f"${trade['unrealized_pnl']:,.2f}"),
-                    html.Td(self._format_duration(trade['entry_time']))
-                ]))
-            
-            table_body = [html.Tbody(rows)]
-            
-            return dbc.Table(
-                table_header + table_body,
-                bordered=True,
-                dark=True,
-                hover=True,
-                responsive=True,
-                striped=True
-            )
-            
-        except Exception as e:
-            logger.error(f"Error creating trades table: {str(e)}")
-            return html.Div("Error loading trades")
-    
-    def _get_system_health(self) -> Dict:
-        """Get system health metrics"""
-        try:
-            return {
-                'status': self._check_system_status(),
-                'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'error_rate': self._get_error_rate(),
-                'memory_usage': self._get_memory_usage(),
-                'api_latency': self._get_api_latency()
-            }
-        except Exception as e:
-            logger.error(f"Error getting system health: {str(e)}")
-            return {}
-    
-    def run(self, host: str = '0.0.0.0', port: int = None):
-        """Run the dashboard server"""
-        try:
-            port = port or self.config.get('dashboard_port', 8050)
-            logger.info(f"Starting dashboard on port {port}")
-            self.app.run_server(host=host, port=port, debug=False)
-        except Exception as e:
-            logger.error(f"Failed to start dashboard: {str(e)}")
-            raise
-
-# Global dashboard instance
-dashboard = DashboardManager()
                         ])
                     ])
                 ])
@@ -507,3 +373,191 @@ dashboard = DashboardManager()
                 hover=True,
                 responsive=True,
                 striped=True
+            )
+            
+        except Exception as e:
+            logger.error(f"Error creating strategy table: {str(e)}")
+            return html.Table()
+    
+    def _get_risk_metrics(self) -> Dict:
+        """Get current risk metrics"""
+        try:
+            trades_df = db.get_trades(status='open')
+            
+            metrics = {
+                'exposure': sum(trades_df['amount'] * trades_df['entry_price']),
+                'max_drawdown': self._calculate_drawdown(),
+                'var_95': self._calculate_var(),
+                'positions': len(trades_df),
+                'largest_position': max(trades_df['amount'] * trades_df['entry_price']) if not trades_df.empty else 0
+            }
+            
+            return metrics
+            
+        except Exception as e:
+            logger.error(f"Error getting risk metrics: {str(e)}")
+            return {}
+    
+    def _create_risk_display(self, metrics: Dict) -> html.Div:
+        """Create risk metrics display"""
+        try:
+            # Create risk indicators with color coding
+            exposure_color = 'success' if metrics.get('exposure', 0) < self.config.get('risk_limits', {}).get('max_exposure', 1000000) else 'danger'
+            drawdown_color = 'success' if metrics.get('max_drawdown', 0) < self.config.get('risk_limits', {}).get('max_drawdown', 0.2) else 'danger'
+            
+            return html.Div([
+                dbc.Alert(
+                    f"Current Exposure: ${metrics.get('exposure', 0):,.2f}",
+                    color=exposure_color,
+                    className="mb-2"
+                ),
+                dbc.Alert(
+                    f"Max Drawdown: {metrics.get('max_drawdown', 0):.2%}",
+                    color=drawdown_color,
+                    className="mb-2"
+                ),
+                html.H5(f"VaR (95%): ${metrics.get('var_95', 0):,.2f}"),
+                html.H5(f"Open Positions: {metrics.get('positions', 0)}"),
+                html.H5(f"Largest Position: ${metrics.get('largest_position', 0):,.2f}")
+            ])
+            
+        except Exception as e:
+            logger.error(f"Error creating risk display: {str(e)}")
+            return html.Div("Error loading risk metrics")
+    
+    def _calculate_drawdown(self):
+        """Placeholder for drawdown calculation"""
+        return 0.0
+        
+    def _calculate_var(self):
+        """Placeholder for VaR calculation"""
+        return 0.0
+    
+    def _get_active_trades(self) -> pd.DataFrame:
+        """Get current active trades"""
+        try:
+            return db.get_trades(status='open')
+        except Exception as e:
+            logger.error(f"Error getting active trades: {str(e)}")
+            return pd.DataFrame()
+    
+    def _calculate_unrealized_pnl(self, trade):
+        """Placeholder for unrealized PnL calculation"""
+        return 0.0
+    
+    def _format_duration(self, timestamp):
+        """Format time duration"""
+        delta = datetime.now() - timestamp
+        hours = delta.total_seconds() / 3600
+        return f"{hours:.1f} hours"
+    
+    def _create_trades_table(self, trades_df: pd.DataFrame) -> html.Div:
+        """Create active trades table"""
+        try:
+            if trades_df.empty:
+                return html.Div("No active trades")
+            
+            # Add current price (placeholder)
+            trades_df['current_price'] = trades_df['entry_price']
+            
+            # Calculate unrealized P&L
+            trades_df['unrealized_pnl'] = trades_df.apply(self._calculate_unrealized_pnl, axis=1)
+            
+            # Create table
+            table_header = [
+                html.Thead(html.Tr([
+                    html.Th("Symbol"),
+                    html.Th("Side"),
+                    html.Th("Entry Price"),
+                    html.Th("Current Price"),
+                    html.Th("Size"),
+                    html.Th("Unrealized P&L"),
+                    html.Th("Duration")
+                ]))
+            ]
+            
+            rows = []
+            for _, trade in trades_df.iterrows():
+                rows.append(html.Tr([
+                    html.Td(trade['symbol']),
+                    html.Td(trade['side']),
+                    html.Td(f"${trade['entry_price']:,.2f}"),
+                    html.Td(f"${trade['current_price']:,.2f}"),
+                    html.Td(f"{trade['amount']:.4f}"),
+                    html.Td(f"${trade['unrealized_pnl']:,.2f}"),
+                    html.Td(self._format_duration(trade['entry_time']))
+                ]))
+            
+            table_body = [html.Tbody(rows)]
+            
+            return dbc.Table(
+                table_header + table_body,
+                bordered=True,
+                dark=True,
+                hover=True,
+                responsive=True,
+                striped=True
+            )
+            
+        except Exception as e:
+            logger.error(f"Error creating trades table: {str(e)}")
+            return html.Div("Error loading trades")
+    
+    def _check_system_status(self):
+        """Placeholder for system status check"""
+        return "healthy"
+    
+    def _get_error_rate(self):
+        """Placeholder for error rate calculation"""
+        return "Low"
+    
+    def _get_memory_usage(self):
+        """Placeholder for memory usage"""
+        return "256MB"
+    
+    def _get_api_latency(self):
+        """Placeholder for API latency"""
+        return "120ms"
+    
+    def _get_system_health(self) -> Dict:
+        """Get system health metrics"""
+        try:
+            return {
+                'status': self._check_system_status(),
+                'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'error_rate': self._get_error_rate(),
+                'memory_usage': self._get_memory_usage(),
+                'api_latency': self._get_api_latency()
+            }
+        except Exception as e:
+            logger.error(f"Error getting system health: {str(e)}")
+            return {}
+    
+    def _create_health_display(self, health: Dict) -> html.Div:
+        """Create health display"""
+        status_color = 'success' if health.get('status') == 'healthy' else 'warning'
+        
+        return html.Div([
+            dbc.Alert(
+                f"Status: {health.get('status', 'unknown')}",
+                color=status_color,
+                className="mb-2"
+            ),
+            html.H5(f"Last Update: {health.get('last_update', 'unknown')}"),
+            html.H5(f"Error Rate: {health.get('error_rate', 'unknown')}"),
+            html.H5(f"Memory Usage: {health.get('memory_usage', 'unknown')}"),
+            html.H5(f"API Latency: {health.get('api_latency', 'unknown')}")
+        ])
+    
+    def run(self, host: str = '0.0.0.0', port: int = None):
+        """Run the dashboard server"""
+        try:
+            port = port or self.config.get('dashboard_port', 8050)
+            logger.info(f"Starting dashboard on port {port}")
+            self.app.run_server(host=host, port=port, debug=False)
+        except Exception as e:
+            logger.error(f"Failed to start dashboard: {str(e)}")
+            raise
+
+# Global dashboard instance
+dashboard = DashboardManager()
