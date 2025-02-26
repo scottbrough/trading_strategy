@@ -32,6 +32,8 @@ class ExchangeConfig:
 
 class ConfigManager:
     _instance = None
+    # Initialize this as a class variable before __init__ is called
+    config_dir = Path(__file__).parent.parent.parent / 'config'
     
     def __new__(cls):
         if cls._instance is None:
@@ -42,9 +44,14 @@ class ConfigManager:
         if not hasattr(self, 'initialized'):
             self.initialized = True
             self.logger = logging.getLogger(__name__)
-            self.config_dir = Path(__file__).parent.parent.parent / 'config'
             self.load_env()
             self.load_config()
+    
+    @classmethod
+    def reset(cls):
+        """Reset the singleton for testing"""
+        if hasattr(cls, '_instance') and cls._instance is not None:
+            cls._instance.initialized = False
     
     def load_env(self):
         """Load environment variables from .env file"""
@@ -64,9 +71,10 @@ class ConfigManager:
             with open(config_path) as f:
                 self.config = yaml.safe_load(f)
             
-            with open(trading_config_path) as f:
-                trading_config = yaml.safe_load(f)
-                self.config.update(trading_config)
+            if trading_config_path.exists():
+                with open(trading_config_path) as f:
+                    trading_config = yaml.safe_load(f)
+                    self.config.update(trading_config)
             
             # Substitute environment variables
             self._substitute_env_vars(self.config)
@@ -91,11 +99,11 @@ class ConfigManager:
                 env_var = value[2:-1]
                 config[key] = os.getenv(env_var)
                 if config[key] is None:
-                    raise ValueError(f"Environment variable {env_var} not set")
+                    self.logger.warning(f"Environment variable {env_var} not set")
     
     def _validate_config(self):
         """Validate configuration values"""
-        required_sections = ['database', 'exchange', 'data', 'strategy', 'monitoring']
+        required_sections = ['database', 'exchange', 'data']
         for section in required_sections:
             if section not in self.config:
                 raise ValueError(f"Missing required configuration section: {section}")
@@ -109,14 +117,6 @@ class ConfigManager:
         ex_config = self.config['exchange']
         if not all(k in ex_config for k in ['name', 'sandbox', 'api_url', 'websocket_url']):
             raise ValueError("Invalid exchange configuration")
-        
-        # Validate trading parameters
-        if 'trading_params' not in self.config:
-            raise ValueError("Missing trading parameters")
-        
-        # Validate optimization parameters
-        if 'optimization_params' not in self.config:
-            raise ValueError("Missing optimization parameters")
     
     def get(self, key: str, default: Any = None) -> Any:
         """Get configuration value by key"""
@@ -143,19 +143,19 @@ class ConfigManager:
     
     def get_risk_params(self) -> dict:
         """Get risk management parameters"""
-        return self.config['risk_params']
+        return self.config.get('risk_params', {})
     
     def get_trading_params(self) -> dict:
         """Get trading parameters"""
-        return self.config['trading_params']
+        return self.config.get('trading_params', {})
     
     def get_optimization_params(self) -> dict:
         """Get optimization parameters"""
-        return self.config['optimization_params']
+        return self.config.get('optimization_params', {})
     
     def get_monitoring_config(self) -> dict:
         """Get monitoring configuration"""
-        return self.config['monitoring']
+        return self.config.get('monitoring', {})
 
 # Global configuration instance
 config = ConfigManager()

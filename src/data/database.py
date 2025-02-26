@@ -199,11 +199,11 @@ class DatabaseManager:
                     symbol=symbol,
                     timestamp=row.name,
                     timeframe=timeframe,
-                    open=row['open'],
-                    high=row['high'],
-                    low=row['low'],
-                    close=row['close'],
-                    volume=row['volume']
+                    open=float(row['open']),  # Convert numpy types to Python native types
+                    high=float(row['high']),
+                    low=float(row['low']),
+                    close=float(row['close']),
+                    volume=float(row['volume'])
                 )
                 records.append(record)
             
@@ -304,11 +304,12 @@ class DatabaseManager:
             logger.error(f"Failed to retrieve trades: {str(e)}")
             raise DatabaseError("Failed to retrieve trades")
     
-    def get_ohlcv(self, symbol: str, timeframe: str, start_time: datetime,
-                  end_time: datetime) -> pd.DataFrame:
+    # src/data/database.py
+    def get_ohlcv(self, symbol: str, timeframe: str, start_time: datetime, end_time: datetime) -> pd.DataFrame:
         """Retrieve OHLCV data"""
         try:
             with self.get_session() as session:
+                logger.info(f"Querying for {symbol} {timeframe} from {start_time} to {end_time}")
                 query = session.query(OHLCV).filter(
                     OHLCV.symbol == symbol,
                     OHLCV.timeframe == timeframe,
@@ -317,6 +318,7 @@ class DatabaseManager:
                 ).order_by(OHLCV.timestamp)
                 
                 records = query.all()
+                logger.info(f"Found {len(records)} records")
                 
                 # Convert to DataFrame
                 data = {

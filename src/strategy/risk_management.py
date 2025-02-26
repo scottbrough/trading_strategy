@@ -35,14 +35,15 @@ class RiskManager:
     def __init__(self, config: Dict[str, Any]):
         """Initialize risk manager with configuration"""
         self.config = config
-        self.risk_params = config['risk_params']
+        # Check if risk_params exists, if not use the config itself
+        self.risk_params = config.get('risk_params', config)
         self.positions = []
         self.daily_stats = {
             'pnl': 0,
             'trades': 0,
             'max_loss': -float('inf'),
             'start_time': datetime.now()
-        }
+            }
     
     def calculate_position_size(self, 
                               capital: float,

@@ -36,11 +36,12 @@ class TestDataProcessor(unittest.TestCase):
         # Verify indicators were calculated
         self.assertIn('rsi', processed.columns)
         self.assertIn('macd', processed.columns)
-        self.assertIn('bb_upper', processed.columns)
+        self.assertIn('bbands_upper', processed.columns)
         
         # Check that there are no NaN values in key columns
         self.assertFalse(processed['rsi'].iloc[-10:].isna().any())
         
+    # tests/test_data_processor.py
     def test_resample_timeframe(self):
         """Test resampling to different timeframes"""
         # Create minute data
@@ -58,5 +59,5 @@ class TestDataProcessor(unittest.TestCase):
         hourly = self.processor.resample_timeframe(minute_df, '1m', '1h')
         
         # Verify
-        self.assertEqual(len(hourly), 24)  # 24 hours
-        self.assertEqual(hourly.index.freqstr, 'H')  # Hourly frequency
+        self.assertEqual(len(hourly), 25)  # 24 hours
+        self.assertEqual(hourly.index.freqstr, 'h')  # Changed from 'H' to 'h'

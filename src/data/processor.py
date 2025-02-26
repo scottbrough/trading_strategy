@@ -192,13 +192,15 @@ class DataProcessor:
         low_values = df['low'].rolling(window=period).min()
         return (high_values + low_values) / 2
     
+    # In processor.py, modify the resample_timeframe method:
+    # src/data/processor.py
     def resample_timeframe(self, df: pd.DataFrame, source_tf: str, target_tf: str) -> pd.DataFrame:
         """Resample data to a different timeframe"""
         try:
             # Convert timeframe string to pandas offset
             tf_map = {
                 '1m': '1Min', '5m': '5Min', '15m': '15Min',
-                '1h': '1H', '4h': '4H', '1d': '1D'
+                '1h': '1h', '4h': '4h', '1d': '1D'  # changed 'H' to 'h'
             }
             
             if target_tf not in tf_map:
