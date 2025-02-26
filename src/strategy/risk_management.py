@@ -13,6 +13,7 @@ import logging
 from ..core.config import config
 from ..core.logger import log_manager
 from ..core.exceptions import StrategyError
+from ..data.database import db
 
 logger = log_manager.get_logger(__name__)
 
@@ -375,3 +376,116 @@ class RiskManager:
         except Exception as e:
             logger.error(f"Error adjusting for market regime: {str(e)}")
             return base_size
+        
+    def calculate_portfolio_beta(self, returns: pd.Series, 
+                          market_returns: pd.Series = None) -> float:
+        """Calculate portfolio beta relative to market"""
+        try:
+            if market_returns is None:
+                # Use BTC as proxy for market
+                market_returns = self._get_market_returns()
+                
+            if len(returns) < 2 or len(market_returns) < 2:
+                return 1.0  # Default to 1.0 if not enough data
+                
+            # Align dates
+            aligned_returns = pd.DataFrame({
+                'portfolio': returns,
+                'market': market_returns
+            }).dropna()
+            
+            # Calculate beta using covariance method
+            covariance = aligned_returns['portfolio'].cov(aligned_returns['market'])
+            market_variance = aligned_returns['market'].var()
+            
+            beta = covariance / market_variance if market_variance != 0 else 1.0
+            return beta
+            
+        except Exception as e:
+            logger.error(f"Error calculating portfolio beta: {str(e)}")
+            return 1.0
+
+    def _get_market_returns(self) -> pd.Series:
+        """Get market returns (using BTC as proxy)"""
+        try:
+            # Get the past 90 days of BTC data
+            end_date = datetime.utcnow()
+            start_date = end_date - timedelta(days=90)
+            
+            btc_data = db.get_ohlcv("BTC/USD", "1d", start_date, end_date)
+            
+            if btc_data.empty:
+                return pd.Series()
+                
+            return btc_data['close'].pct_change().dropna()
+            
+        except Exception as e:
+            logger.error(f"Error getting market returns: {str(e)}")
+            return pd.Series()
+
+    def _has_position(self, side: str = None) -> bool:
+        """Check if we have an open position of the specified side"""
+        if side:
+            return any(pos['side'] == side for pos in self.positions)
+        return bool(self.positions)
+
+    def _check_position_limits(self, position: Dict[str, Any]) -> bool:
+        """Check if position is within limits"""
+        # Max positions
+        if len(self.positions) >= self.config.get('max_open_positions', 10):
+            return False
+            
+        # Max exposure per position
+        total_exposure = sum(pos['size'] * pos['price'] for pos in self.positions)
+        new_exposure = position['size'] * position['price']
+        
+        if new_exposure > self.config.get('max_position_size', 0.2) * self.total_capital:
+            return False
+            
+        # Max exposure for all positions
+        if (total_exposure + new_exposure) > self.config.get('max_total_exposure', 0.5) * self.total_capital:
+            return False
+            
+        return True
+
+    def _calculate_position_risk(self, position: Dict[str, Any]) -> float:
+        """Calculate risk for position as fraction of capital"""
+        try:
+            position_value = position['size'] * position['price']
+            stop_loss_pct = self.config.get('stop_loss', 0.02)
+            
+            risk_amount = position_value * stop_loss_pct
+            risk_fraction = risk_amount / self.total_capital
+            
+            return risk_fraction
+            
+        except Exception as e:
+            logger.error(f"Error calculating position risk: {str(e)}")
+            return 0.0
+
+    def log_trade(self, trade: Dict[str, Any]) -> None:
+        """Log completed trade and update statistics"""
+        try:
+            # Update daily stats
+            self.daily_stats['trades'] += 1
+            self.daily_stats['pnl'] += trade['pnl']
+            
+            if trade['pnl'] < 0:
+                self.daily_stats['max_loss'] = min(self.daily_stats['max_loss'], trade['pnl'])
+                
+            # Store trade in database
+            db.store_trade({
+                'symbol': trade['symbol'],
+                'side': trade['side'],
+                'entry_price': trade['entry_price'],
+                'exit_price': trade['exit_price'],
+                'amount': trade['size'],
+                'entry_time': trade['entry_time'],
+                'exit_time': trade['exit_time'],
+                'pnl': trade['pnl'],
+                'status': 'closed',
+                'strategy': self.config.get('strategy_name', 'unknown')
+            })
+            
+        except Exception as e:
+            logger.error(f"Error logging trade: {str(e)}")

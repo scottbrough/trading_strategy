@@ -208,16 +208,73 @@ def start_paper_trading():
         raise
 
 def parse_arguments():
-    """Parse command line arguments"""
+    """Parse command line arguments with improved options"""
     parser = argparse.ArgumentParser(description='Deploy trading system')
+    
+    # Main operation mode
     parser.add_argument(
         '--mode',
-        choices=['full', 'backtest', 'paper'],
+        choices=['paper', 'live', 'backtest'],
         default='paper',
-        help='Deployment mode'
+        help='Deployment mode (paper trading, live trading, or backtest)'
     )
+    
+    # Strategy configuration
+    parser.add_argument(
+        '--strategy',
+        type=str,
+        help='Strategy to run (e.g., momentum_strategy.MomentumStrategy)'
+    )
+    
+    parser.add_argument(
+        '--config',
+        type=str,
+        help='Path to strategy configuration file'
+    )
+    
+    # Data options
+    parser.add_argument(
+        '--symbols',
+        type=str,
+        nargs='+',
+        help='Symbols to trade (e.g., BTC/USD ETH/USD)'
+    )
+    
+    parser.add_argument(
+        '--timeframes',
+        type=str,
+        nargs='+',
+        default=['1h'],
+        help='Timeframes to use (e.g., 1m 5m 1h)'
+    )
+    
+    # Connection options
+    parser.add_argument(
+        '--exchange',
+        type=str,
+        default='kraken',
+        help='Exchange to use'
+    )
+    
+    # Monitoring options
+    parser.add_argument(
+        '--dashboard-port',
+        type=int,
+        default=8050,
+        help='Port for monitoring dashboard'
+    )
+    
+    # Database options
+    parser.add_argument(
+        '--db-host',
+        type=str,
+        help='Database host'
+    )
+    
+    parser.add_argument(
+        '--db-port',
+        type=int,
+        help='Database port'
+    )
+    
     return parser.parse_args()
-
-if __name__ == "__main__":
-    args = parse_arguments()
-    deploy_system(args)
