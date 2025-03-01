@@ -1,10 +1,7 @@
-"""
-Tests for order execution system.
-"""
-
 import unittest
 from unittest.mock import Mock, patch, AsyncMock
 import asyncio
+import time
 from datetime import datetime
 from src.trading.execution import OrderExecutor
 from src.data.stream import KrakenStreamManager
@@ -27,6 +24,15 @@ class TestOrderExecutor(unittest.TestCase):
         
         # Create executor
         self.executor = OrderExecutor(self.mock_stream, self.mock_risk)
+        
+        # Add the missing config attribute
+        self.executor.config = {
+            'min_execution_interval': 10,
+            'min_position_size': 0.001
+        }
+        
+        # Initialize last_execution_time as empty
+        self.executor.last_execution_time = {}
         
     async def test_add_signal(self):
         """Test adding a signal"""
@@ -82,6 +88,9 @@ class TestOrderExecutor(unittest.TestCase):
             'order_id': 'test123'
         }
         
+        # Reset last_execution_time to avoid rate limiting
+        self.executor.last_execution_time = {}
+        
         # Create exit signal
         signal = {
             'timestamp': datetime.now(),
@@ -107,7 +116,19 @@ class TestOrderExecutor(unittest.TestCase):
         
     def test_executor(self):
         """Run async tests"""
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(self.test_add_signal())
-        loop.run_until_complete(self.test_process_buy_signal())
-        loop.run_until_complete(self.test_process_exit_signal())
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        try:
+            # Run each test separately, clearing state between tests
+            loop.run_until_complete(self.test_add_signal())
+            
+            # Reset for next test
+            self.setUp()
+            loop.run_until_complete(self.test_process_buy_signal())
+            
+            # Reset for next test
+            self.setUp()
+            loop.run_until_complete(self.test_process_exit_signal())
+        finally:
+            loop.close()

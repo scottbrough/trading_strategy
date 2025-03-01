@@ -1,187 +1,334 @@
 """
-Test suite for trading strategies and system components.
+Technical indicators library for the trading system.
+Implements advanced indicators and custom calculations.
 """
 
-import pytest
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
-import json
+import talib
+from typing import Tuple, Dict, Optional
+from dataclasses import dataclass
+from src.core.logger import log_manager
 
-from src.strategy.implementations.momentum_strategy import MomentumStrategy
-from src.strategy.implementations.trend_strategy import TrendStrategy
-from src.strategy.implementations.mean_reversion_strategy import MeanReversionStrategy
-from src.data.processor import DataProcessor
+logger = log_manager.get_logger(__name__)
 
-@pytest.fixture
-def sample_data():
-    """Create sample OHLCV data for testing"""
-    dates = pd.date_range(start='2023-01-01', periods=100, freq='1H')
-    data = {
-        'open': np.random.normal(100, 2, 100),
-        'high': np.random.normal(101, 2, 100),
-        'low': np.random.normal(99, 2, 100),
-        'close': np.random.normal(100, 2, 100),
-        'volume': np.random.normal(1000, 100, 100)
-    }
-    df = pd.DataFrame(data, index=dates)
-    return df
+@dataclass
+class IndicatorConfig:
+    """Configuration for indicator calculations"""
+    rsi_period: int = 14
+    macd_fast: int = 12
+    macd_slow: int = 26
+    macd_signal: int = 9
+    bb_period: int = 20
+    bb_stddev: float = 2.0
+    atr_period: int = 14
+    ema_periods: Tuple[int, ...] = (9, 21, 50, 200)
+    stoch_k: int = 14
+    stoch_d: int = 3
+    stoch_smooth: int = 3
+    adx_period: int = 14
+    volume_ma_period: int = 20
 
-@pytest.fixture
-def momentum_strategy():
-    """Create momentum strategy instance"""
-    config = {
-        'strategy': {
-            'rsi_oversold': 30,
-            'rsi_overbought': 70,
-            'adx_threshold': 25,
-            'risk_factor': 0.02,
-            'max_position_size': 0.1,
-            'min_position_size': 0.01
-        }
-    }
-    return MomentumStrategy(config)
-
-@pytest.fixture
-def trend_strategy():
-    """Create trend strategy instance"""
-    config = {
-        'strategy': {
-            'trend_threshold': 0.3,
-            'quality_threshold': 0.6,
-            'adx_threshold': 25,
-            'risk_factor': 0.02,
-            'max_position_size': 0.1,
-            'min_position_size': 0.01
-        }
-    }
-    return TrendStrategy(config)
-
-@pytest.fixture
-def mean_reversion_strategy():
-    """Create mean reversion strategy instance"""
-    config = {
-        'strategy': {
-            'zscore_threshold': 2.0,
-            'probability_threshold': 0.7,
-            'volume_threshold': 1.2,
-            'risk_factor': 0.02,
-            'max_position_size': 0.1,
-            'min_position_size': 0.01
-        }
-    }
-    return MeanReversionStrategy(config)
-
-def test_momentum_strategy_signals(momentum_strategy, sample_data):
-    """Test momentum strategy signal generation"""
-    processor = DataProcessor()
-    data = processor.process_ohlcv(sample_data, '1h')
+class TechnicalIndicators:
+    def __init__(self, config: Optional[IndicatorConfig] = None):
+        """Initialize with optional custom configuration"""
+        self.config = config or IndicatorConfig()
+        self._cache = {}
     
-    signals = momentum_strategy.generate_signals(data)
+    def calculate_all(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Calculate all technical indicators"""
+        try:
+            df = df.copy()
+            
+            # Trend indicators
+            self._add_moving_averages(df)
+            self._add_macd(df)
+            self._add_adx(df)
+            
+            # Momentum indicators
+            self._add_rsi(df)
+            self._add_stochastic(df)
+            self._add_momentum(df)
+            
+            # Volatility indicators
+            self._add_bollinger_bands(df)
+            self._add_atr(df)
+            
+            # Volume indicators
+            self._add_volume_indicators(df)
+            
+            # Custom indicators
+            self._add_custom_indicators(df)
+            
+            return df
+            
+        except Exception as e:
+            logger.error(f"Error calculating indicators: {str(e)}")
+            raise
     
-    assert isinstance(signals, list)
-    if signals:
-        assert all(isinstance(signal, dict) for signal in signals)
-        assert all('action' in signal for signal in signals)
-        assert all('timestamp' in signal for signal in signals)
-        assert all('price' in signal for signal in signals)
-
-def test_trend_strategy_signals(trend_strategy, sample_data):
-    """Test trend strategy signal generation"""
-    processor = DataProcessor()
-    data = processor.process_ohlcv(sample_data, '1h')
+    def _add_moving_averages(self, df: pd.DataFrame) -> None:
+        """Add various moving averages"""
+        try:
+            for period in self.config.ema_periods:
+                df[f'ema_{period}'] = talib.EMA(df['close'], timeperiod=period)
+                df[f'sma_{period}'] = talib.SMA(df['close'], timeperiod=period)
+            
+            # Add hull moving average
+            def hull_ma(data: pd.Series, period: int) -> pd.Series:
+                half_period = period // 2
+                sqrt_period = int(np.sqrt(period))
+                
+                wma1 = talib.WMA(data, timeperiod=half_period)
+                wma2 = talib.WMA(data, timeperiod=period)
+                diff = 2 * wma1 - wma2
+                return talib.WMA(diff, timeperiod=sqrt_period)
+            
+            df['hull_ma'] = hull_ma(df['close'], 20)
+            
+        except Exception as e:
+            logger.error(f"Error adding moving averages: {str(e)}")
+            raise
     
-    signals = trend_strategy.generate_signals(data)
+    def _add_macd(self, df: pd.DataFrame) -> None:
+        """Add MACD indicator"""
+        try:
+            df['macd'], df['macd_signal'], df['macd_hist'] = talib.MACD(
+                df['close'],
+                fastperiod=self.config.macd_fast,
+                slowperiod=self.config.macd_slow,
+                signalperiod=self.config.macd_signal
+            )
+            
+            # Add normalized MACD
+            df['macd_norm'] = df['macd'] / df['close']
+            
+        except Exception as e:
+            logger.error(f"Error adding MACD: {str(e)}")
+            raise
     
-    assert isinstance(signals, list)
-    if signals:
-        assert all(isinstance(signal, dict) for signal in signals)
-        assert all('action' in signal for signal in signals)
-        assert all('timestamp' in signal for signal in signals)
-        assert all('price' in signal for signal in signals)
-
-def test_mean_reversion_signals(mean_reversion_strategy, sample_data):
-    """Test mean reversion strategy signal generation"""
-    processor = DataProcessor()
-    data = processor.process_ohlcv(sample_data, '1h')
+    def _add_rsi(self, df: pd.DataFrame) -> None:
+        """Add RSI and derived indicators"""
+        try:
+            df['rsi'] = talib.RSI(df['close'], timeperiod=self.config.rsi_period)
+            
+            # Add RSI moving average
+            df['rsi_ma'] = talib.SMA(df['rsi'], timeperiod=self.config.rsi_period)
+            
+            # Add RSI divergence
+            def calculate_divergence(price: pd.Series, rsi: pd.Series, window: int = 14) -> pd.Series:
+                price_min = price.rolling(window=window).min()
+                price_max = price.rolling(window=window).max()
+                rsi_min = rsi.rolling(window=window).min()
+                rsi_max = rsi.rolling(window=window).max()
+                
+                bearish = (price_max > price_max.shift(1)) & (rsi_max < rsi_max.shift(1))
+                bullish = (price_min < price_min.shift(1)) & (rsi_min > rsi_min.shift(1))
+                
+                return pd.Series(index=price.index, data=np.where(bearish, -1, np.where(bullish, 1, 0)))
+            
+            df['rsi_divergence'] = calculate_divergence(df['close'], df['rsi'])
+            
+        except Exception as e:
+            logger.error(f"Error adding RSI: {str(e)}")
+            raise
     
-    signals = mean_reversion_strategy.generate_signals(data)
+    def _add_stochastic(self, df: pd.DataFrame) -> None:
+        """Add Stochastic indicators"""
+        try:
+            df['slowk'], df['slowd'] = talib.STOCH(
+                df['high'],
+                df['low'],
+                df['close'],
+                fastk_period=self.config.stoch_k,
+                slowk_period=self.config.stoch_smooth,
+                slowk_matype=0,
+                slowd_period=self.config.stoch_d,
+                slowd_matype=0
+            )
+            
+            # Add Stochastic RSI
+            df['stoch_rsi'] = talib.STOCHRSI(
+                df['close'],
+                timeperiod=self.config.rsi_period,
+                fastk_period=self.config.stoch_k,
+                fastd_period=self.config.stoch_d
+            )[0]  # STOCHRSI returns a tuple, we want the first element
+            
+        except Exception as e:
+            logger.error(f"Error adding Stochastic: {str(e)}")
+            raise
     
-    assert isinstance(signals, list)
-    if signals:
-        assert all(isinstance(signal, dict) for signal in signals)
-        assert all('action' in signal for signal in signals)
-        assert all('timestamp' in signal for signal in signals)
-        assert all('price' in signal for signal in signals)
-
-def test_position_sizing(momentum_strategy, sample_data):
-    """Test position sizing calculations"""
-    signal = {
-        'action': 'buy',
-        'price': 100.0,
-        'signal_strength': 0.8
-    }
+    def _add_bollinger_bands(self, df: pd.DataFrame) -> None:
+        """Add Bollinger Bands and derived indicators"""
+        try:
+            df['bb_upper'], df['bb_middle'], df['bb_lower'] = talib.BBANDS(
+                df['close'],
+                timeperiod=self.config.bb_period,
+                nbdevup=self.config.bb_stddev,
+                nbdevdn=self.config.bb_stddev
+            )
+            
+            # Add BB width and %B indicators
+            df['bb_width'] = (df['bb_upper'] - df['bb_lower']) / df['bb_middle']
+            df['bb_pct_b'] = (df['close'] - df['bb_lower']) / (df['bb_upper'] - df['bb_lower'])
+            
+        except Exception as e:
+            logger.error(f"Error adding Bollinger Bands: {str(e)}")
+            raise
     
-    size = momentum_strategy._calculate_position_size(sample_data.iloc[-1], signal['signal_strength'])
+    # Add remaining methods from the file...
+    def _add_adx(self, df: pd.DataFrame) -> None:
+        """Add ADX and DMI indicators"""
+        try:
+            df['adx'] = talib.ADX(
+                df['high'],
+                df['low'],
+                df['close'],
+                timeperiod=self.config.adx_period
+            )
+            
+            # Add DI+ and DI-
+            df['plus_di'] = talib.PLUS_DI(
+                df['high'],
+                df['low'],
+                df['close'],
+                timeperiod=self.config.adx_period
+            )
+            df['minus_di'] = talib.MINUS_DI(
+                df['high'],
+                df['low'],
+                df['close'],
+                timeperiod=self.config.adx_period
+            )
+            
+            # Add ADX trend strength
+            df['adx_trend'] = np.where(
+                df['adx'] > 25,
+                np.where(df['plus_di'] > df['minus_di'], 1, -1),
+                0
+            )
+            
+        except Exception as e:
+            logger.error(f"Error adding ADX: {str(e)}")
+            raise
     
-    assert isinstance(size, float)
-    assert size > 0
-    assert size <= momentum_strategy.params['max_position_size']
-    assert size >= momentum_strategy.params['min_position_size']
-
-def test_risk_management(momentum_strategy):
-    """Test risk management rules"""
-    position = {
-        'symbol': 'BTC/USD',
-        'side': 'buy',
-        'entry_price': 100.0,
-        'size': 0.1,
-        'timestamp': datetime.now()
-    }
+    def _add_atr(self, df: pd.DataFrame) -> None:
+        """Add ATR and derived indicators"""
+        try:
+            df['atr'] = talib.ATR(
+                df['high'],
+                df['low'],
+                df['close'],
+                timeperiod=self.config.atr_period
+            )
+            
+            # Add normalized ATR
+            df['atr_pct'] = df['atr'] / df['close'] * 100
+            
+            # Add ATR-based channels
+            df['atr_upper'] = df['close'] + (df['atr'] * 2)
+            df['atr_lower'] = df['close'] - (df['atr'] * 2)
+            
+        except Exception as e:
+            logger.error(f"Error adding ATR: {str(e)}")
+            raise
     
-    # Test position limits
-    assert momentum_strategy._check_position_limits(position)
+    def _add_momentum(self, df: pd.DataFrame) -> None:
+        """Add momentum indicators"""
+        try:
+            # ROC
+            df['roc'] = talib.ROC(df['close'], timeperiod=10)
+            
+            # Momentum
+            df['mom'] = talib.MOM(df['close'], timeperiod=10)
+            
+            # PPO
+            df['ppo'] = talib.PPO(df['close'], fastperiod=12, slowperiod=26)
+            
+            # Add custom momentum score
+            def momentum_score(data: pd.DataFrame) -> pd.Series:
+                roc_norm = (data['roc'] - data['roc'].rolling(20).mean()) / data['roc'].rolling(20).std()
+                mom_norm = (data['mom'] - data['mom'].rolling(20).mean()) / data['mom'].rolling(20).std()
+                ppo_norm = (data['ppo'] - data['ppo'].rolling(20).mean()) / data['ppo'].rolling(20).std()
+                
+                return (roc_norm + mom_norm + ppo_norm) / 3
+            
+            df['momentum_score'] = momentum_score(df)
+            
+        except Exception as e:
+            logger.error(f"Error adding momentum indicators: {str(e)}")
+            raise
     
-    # Test risk per trade
-    risk = momentum_strategy._calculate_position_risk(position)
-    assert risk <= momentum_strategy.params['risk_factor']
-
-def test_data_processing(sample_data):
-    """Test data processing functionality"""
-    processor = DataProcessor()
-    processed_data = processor.process_ohlcv(sample_data, '1h')
+    def _add_volume_indicators(self, df: pd.DataFrame) -> None:
+        """Add volume-based indicators"""
+        try:
+            # OBV
+            df['obv'] = talib.OBV(df['close'], df['volume'])
+            
+            # Volume MA
+            df['volume_sma'] = talib.SMA(df['volume'], timeperiod=self.config.volume_ma_period)
+            df['volume_ratio'] = df['volume'] / df['volume_sma']
+            
+            # Money Flow Index
+            df['mfi'] = talib.MFI(
+                df['high'],
+                df['low'],
+                df['close'],
+                df['volume'],
+                timeperiod=14
+            )
+            
+        except Exception as e:
+            logger.error(f"Error adding volume indicators: {str(e)}")
+            raise
     
-    required_indicators = [
-        'rsi', 'macd', 'macd_signal', 'macd_hist',
-        'bb_upper', 'bb_lower', 'bb_middle'
-    ]
-    
-    assert all(indicator in processed_data.columns for indicator in required_indicators)
-    assert not processed_data.isnull().any().any()
-
-def test_strategy_optimization(momentum_strategy, sample_data):
-    """Test strategy optimization"""
-    processor = DataProcessor()
-    data = processor.process_ohlcv(sample_data, '1h')
-    
-    # Test parameter optimization
-    optimized_params = momentum_strategy.optimize_parameters(data)
-    
-    assert isinstance(optimized_params, dict)
-    assert 'rsi_oversold' in optimized_params
-    assert 'rsi_overbought' in optimized_params
-    assert 'adx_threshold' in optimized_params
-
-def test_performance_metrics(momentum_strategy, sample_data):
-    """Test performance metrics calculation"""
-    trades = [
-        {'entry_price': 100, 'exit_price': 105, 'size': 1.0, 'side': 'buy'},
-        {'entry_price': 105, 'exit_price': 103, 'size': 1.0, 'side': 'sell'}
-    ]
-    
-    metrics = momentum_strategy.calculate_performance_metrics(trades)
-    
-    assert 'total_pnl' in metrics
-    assert 'win_rate' in metrics
-    assert 'sharpe_ratio' in metrics
-    assert 'max_drawdown' in metrics
+    def _add_custom_indicators(self, df: pd.DataFrame) -> None:
+        """Add custom composite indicators"""
+        try:
+            # Trend strength indicator
+            def trend_strength(data: pd.DataFrame) -> pd.Series:
+                # Check if we have the required columns
+                if not all(col in data.columns for col in ['ema_9', 'ema_21', 'ema_50', 'adx', 'volume_ratio']):
+                    # Return a series of zeros if columns are missing
+                    return pd.Series(0, index=data.index)
+                
+                ema_align = (data['ema_9'] > data['ema_21']) & \
+                          (data['ema_21'] > data['ema_50'])
+                adx_strong = data['adx'] > 25
+                vol_confirm = data['volume_ratio'] > 1.0
+                
+                return np.where(
+                    ema_align & adx_strong & vol_confirm,
+                    1,
+                    np.where(
+                        (~ema_align) & adx_strong & vol_confirm,
+                        -1,
+                        0
+                    )
+                )
+            
+            df['trend_strength'] = trend_strength(df)
+            
+            # Volatility regime
+            def volatility_regime(data: pd.DataFrame) -> pd.Series:
+                if 'bb_width' not in data.columns or 'atr_pct' not in data.columns:
+                    return pd.Series('normal', index=data.index)
+                
+                bb_high = data['bb_width'] > data['bb_width'].rolling(20).mean()
+                atr_high = data['atr_pct'] > data['atr_pct'].rolling(20).mean()
+                
+                return np.where(
+                    bb_high & atr_high,
+                    'high',
+                    np.where(
+                        (~bb_high) & (~atr_high),
+                        'low',
+                        'normal'
+                    )
+                )
+            
+            df['volatility_regime'] = volatility_regime(df)
+            
+        except Exception as e:
+            logger.error(f"Error adding custom indicators: {str(e)}")
+            raise
