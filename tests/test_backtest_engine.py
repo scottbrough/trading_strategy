@@ -13,9 +13,16 @@ class MockStrategy(BaseStrategy):
     """Mock strategy for testing"""
     
     def __init__(self, config=None):
-        self.config = config or {}
-        self.positions = []
-        self.trades = []
+        if config is None:
+            config = {
+                'strategy': {
+                    'risk_fraction': 0.02,
+                    'max_position_size': 0.2,
+                    'stop_loss': 0.05,
+                    'profit_target': 0.1
+                }
+            }
+        super().__init__(config)
         
     def generate_signals(self, data):
         """Generate mock signals"""
@@ -38,6 +45,10 @@ class MockStrategy(BaseStrategy):
             })
             
         return signals
+    
+    def _validate_config(self):
+        """Override validation to prevent errors during testing"""
+        pass
 
 class TestBacktestEngine(unittest.TestCase):
     def setUp(self):

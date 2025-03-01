@@ -124,7 +124,7 @@ class BacktestEngine:
                 continue
                 
             # Add required indicators if not present
-            processed_data[symbol] = self.data_processor.process_ohlcv(df_copy, '1d')
+            processed_data[symbol] = df_copy
             
         if not processed_data:
             raise ValueError("No valid data after preparation")
@@ -141,7 +141,7 @@ class BacktestEngine:
                 # Generate signals for this symbol
                 signals = strategy.generate_signals(df)
                 
-                # Add symbol to each signal
+                # Add symbol to each signal if not present
                 for signal in signals:
                     if 'symbol' not in signal:
                         signal['symbol'] = symbol
@@ -204,17 +204,21 @@ class BacktestEngine:
                 
         # Final equity curve update
         if self.positions:
-            last_date = max(data_dict[pos['symbol']].index[-1] for pos in self.positions
-                          if pos['symbol'] in data_dict)
-            self._update_equity_curve(last_date)
+            last_dates = [data_dict[pos['symbol']].index[-1] for pos in self.positions 
+                       if pos['symbol'] in data_dict]
+            if last_dates:
+                last_date = max(last_dates)
+                self._update_equity_curve(last_date)
         
     def _open_position(self, symbol: str, timestamp: datetime, 
                      price: float, size: float, side: str):
         """Open a new position"""
         # Check if we have enough capital
         position_value = price * size
-        if position_value > self.current_capital * self.config.get('max_position_size', 0.2):
-            size = (self.current_capital * self.config.get('max_position_size', 0.2)) / price
+        max_position_size = self.config.get('max_position_size', 0.2)
+        
+        if position_value > self.current_capital * max_position_size:
+            size = (self.current_capital * max_position_size) / price
             
         # Create position
         position = {
@@ -514,7 +518,6 @@ class BacktestEngine:
         except Exception as e:
             logger.error(f"Failed to save results: {str(e)}")
 
-    # Add this to src/strategy/backtest.py
 
 class WalkForwardOptimizer:
     """
@@ -671,19 +674,21 @@ class WalkForwardOptimizer:
         
         for _ in range(num_trials):
             params = self.base_config.copy()
+            strategy_params = params.get('strategy', {}).copy()
             
             for param_name, (min_val, max_val) in self.parameter_ranges.items():
                 # Handle different parameter types
                 if isinstance(min_val, int) and isinstance(max_val, int):
                     # Integer parameter
-                    params[param_name] = np.random.randint(min_val, max_val + 1)
+                    strategy_params[param_name] = np.random.randint(min_val, max_val + 1)
                 elif isinstance(min_val, bool) or isinstance(max_val, bool):
                     # Boolean parameter
-                    params[param_name] = bool(np.random.randint(0, 2))
+                    strategy_params[param_name] = bool(np.random.randint(0, 2))
                 else:
                     # Float parameter
-                    params[param_name] = np.random.uniform(min_val, max_val)
+                    strategy_params[param_name] = np.random.uniform(min_val, max_val)
             
+            params['strategy'] = strategy_params
             param_sets.append(params)
         
         return param_sets
@@ -713,6 +718,8 @@ class WalkForwardOptimizer:
         # Generate combinations
         param_names = list(param_values.keys())
         combinations = []
+        base_config = self.base_config.copy()
+        strategy_params = base_config.get('strategy', {}).copy()
         
         def generate_combinations(param_idx, current_params):
             if param_idx == len(param_names) or len(combinations) >= max_trials:
@@ -723,13 +730,15 @@ class WalkForwardOptimizer:
                 current_params[param_name] = value
                 
                 if param_idx == len(param_names) - 1:
-                    combinations.append(current_params.copy())
+                    config_copy = base_config.copy()
+                    config_copy['strategy'] = current_params.copy()
+                    combinations.append(config_copy)
                     if len(combinations) >= max_trials:
                         return
                 else:
                     generate_combinations(param_idx + 1, current_params)
         
-        generate_combinations(0, self.base_config.copy())
+        generate_combinations(0, strategy_params)
         
         return combinations[:max_trials]
     
@@ -817,41 +826,48 @@ class WalkForwardOptimizer:
             return self.base_config
             
         # Initialize parameter accumulator
-        combined_params = {}
+        combined_params = self.base_config.copy()
+        strategy_params = {}
         
         # Calculate weighted average based on test performance
         total_weight = 0
         
         for fold_result in self.results:
             # Use test return as weight
-            weight = max(0.1, fold_result['test_metrics']['total_return'] + 0.5)
+            test_return = fold_result['test_metrics']['total_return']
+            weight = max(0.1, test_return + 0.5)
             total_weight += weight
             
             # Add weighted parameters
-            for param_name, param_value in fold_result['best_parameters'].items():
-                if param_name not in combined_params:
-                    combined_params[param_name] = 0
+            fold_params = fold_result['best_parameters'].get('strategy', {})
+            for param_name, param_value in fold_params.items():
+                if param_name not in strategy_params:
+                    strategy_params[param_name] = 0
                     
-                combined_params[param_name] += param_value * weight
+                strategy_params[param_name] += param_value * weight
         
         # Normalize by total weight
-        for param_name in combined_params:
-            # Check if this is an integer parameter
-            is_int = any(isinstance(fold['best_parameters'].get(param_name), int) 
-                       for fold in self.results)
-            
-            # Check if this is a boolean parameter
-            is_bool = any(isinstance(fold['best_parameters'].get(param_name), bool)
-                        for fold in self.results)
-            
-            # Normalize
-            if total_weight > 0:
-                combined_params[param_name] /= total_weight
+        if total_weight > 0:
+            for param_name in strategy_params:
+                # Check parameter types
+                is_int = False
+                is_bool = False
                 
-                # Convert back to original type
+                for fold_result in self.results:
+                    fold_params = fold_result['best_parameters'].get('strategy', {})
+                    param_value = fold_params.get(param_name)
+                    if isinstance(param_value, int):
+                        is_int = True
+                    elif isinstance(param_value, bool):
+                        is_bool = True
+                
+                # Normalize and convert to original type
+                strategy_params[param_name] /= total_weight
+                
                 if is_int:
-                    combined_params[param_name] = int(round(combined_params[param_name]))
+                    strategy_params[param_name] = int(round(strategy_params[param_name]))
                 elif is_bool:
-                    combined_params[param_name] = combined_params[param_name] >= 0.5
+                    strategy_params[param_name] = strategy_params[param_name] >= 0.5
         
-        return combined_params    
+        combined_params['strategy'] = strategy_params
+        return combined_params
