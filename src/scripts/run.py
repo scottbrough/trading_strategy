@@ -45,11 +45,16 @@ async def main():
         
         # Initialize executor based on mode
         if args.paper or config.is_sandbox():
-            logger.info("Using paper trading executor")
+            logger.info("Using paper trading executor with real market data")
             executor = PaperTradingExecutor()
+            is_paper_trading = True
         else:
             logger.info("Using live trading executor")
             executor = OrderExecutor(stream_manager, risk_manager)
+            is_paper_trading = False
+        
+        # Start the executor
+        await executor.start()
         
         # Initialize strategy runner
         runner = StrategyRunner()
@@ -72,8 +77,6 @@ async def main():
         logger.info(f"Looking for strategy class: {class_name}")
         success = await runner.load_strategy(strategy_name, strategy_config, class_name)
         
-        
-        success = await runner.load_strategy(strategy_name, strategy_config)
         if not success:
             logger.error(f"Failed to load strategy: {strategy_name}")
             return
@@ -89,6 +92,8 @@ async def main():
             
     except KeyboardInterrupt:
         logger.info("Stopping trading system...")
+        if 'executor' in locals():
+            await executor.stop()
         if 'runner' in locals():
             await runner.stop()
         logger.info("Trading system stopped")

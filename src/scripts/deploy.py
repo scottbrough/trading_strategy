@@ -125,7 +125,7 @@ def check_api_access(config):
 
 def setup_directories():
     """Create required directories"""
-    directories = ['data', 'logs', 'results', 'config']
+    directories = ['data', 'logs', 'results', 'config', 'sessions']
     for dir_name in directories:
         Path(dir_name).mkdir(exist_ok=True)
         logger.info(f"Created directory: {dir_name}")
@@ -151,7 +151,9 @@ def deploy_system(args):
         elif args.mode == 'backtest':
             start_backtest_mode()
         elif args.mode == 'paper':
-            start_paper_trading(config)
+            # Always use real data for paper trading
+            logger.info("Starting paper trading with real market data")
+            start_paper_trading(config, use_real_data=True)
         
         logger.info("System deployment completed successfully")
         
@@ -176,15 +178,22 @@ def start_backtest_mode():
         logger.error(f"Error starting backtest mode: {e}")
         raise
 
-def start_paper_trading(config):
-    """Start system in paper trading mode"""
+def start_paper_trading(config, use_real_data=True):
+    """Start system in paper trading mode with real market data"""
     try:
         # Set environment to sandbox
         os.environ['TRADING_ENV'] = 'sandbox'
         
         # Start paper trading components
-        start_full_system(config)
-        logger.info("Started system in paper trading mode")
+        cmd = [
+            sys.executable,
+            '-m',
+            'src.scripts.run',
+            '--paper'
+        ]
+        
+        subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        logger.info("Started system in paper trading mode with real market data")
         
     except Exception as e:
         logger.error(f"Error starting paper trading: {e}")

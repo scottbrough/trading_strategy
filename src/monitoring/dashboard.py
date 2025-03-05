@@ -15,9 +15,10 @@ import threading
 import queue
 from typing import Dict, List, Optional
 
-from ..core.config import config
-from ..core.logger import log_manager
-from ..data.database import db
+##these imports are what are causing the dashboard to not show correctly. 
+from src.core.config import config
+from src.core.logger import log_manager
+from src.data.database import db
 
 logger = log_manager.get_logger(__name__)
 
@@ -442,8 +443,186 @@ class DashboardManager:
             return pd.DataFrame()
     
     def _calculate_unrealized_pnl(self, trade):
-        """Placeholder for unrealized PnL calculation"""
-        return 0.0
+        """Calculate unrealized P&L for a position"""
+        try:
+            # Get current price
+            symbol = trade['symbol']
+            entry_price = trade['entry_price']
+            size = trade['size']
+            side = trade['side']
+            
+            # Use latest price from paper trading executor if available
+            latest_price = None
+            try:
+                from src.trading.paper_trading import paper_trading_executor
+                if hasattr(paper_trading_executor, 'latest_prices') and symbol in paper_trading_executor.latest_prices:
+                    latest_price = paper_trading_executor.latest_prices[symbol]
+            except:
+                pass
+            
+            # If not available, try to get from database
+            if not latest_price:
+                try:
+                    from src.data.database import db
+                    recent_ohlcv = db.get_ohlcv(symbol, '1m', 
+                                            datetime.now() - timedelta(minutes=10),
+                                            datetime.now())
+                    if not recent_ohlcv.empty:
+                        latest_price = recent_ohlcv['close'].iloc[-1]
+                except:
+                    pass
+                    
+            # If still no price, use entry price
+            if not latest_price:
+                latest_price = entry_price
+                
+            # Calculate unrealized P&L
+            if side == 'long':
+                return (latest_price - entry_price) * size
+            else:  # short
+                return (entry_price - latest_price) * size
+                
+        except Exception as e:
+            logger.error(f"Error calculating unrealized P&L: {str(e)}")
+            return 0.0
+
+    def _create_metrics_display(self, metrics: Dict) -> html.Div:
+        """Create performance metrics display with account balance"""
+        try:
+            # Get current account balance
+            balance = 0
+            equity = 0
+            unrealized_pnl = 0
+            
+            # Try to get balance from paper trading executor
+            try:
+                # Import here to avoid circular imports
+                import importlib
+                paper_trading = importlib.import_module('src.trading.paper_trading')
+                if hasattr(paper_trading, 'paper_trading_executor'):
+                    account_info = paper_trading.paper_trading_executor.get_account_balance()
+                    balance = account_info.get('balance', 0)
+                    equity = account_info.get('equity', 0)
+                    unrealized_pnl = account_info.get('unrealized_pnl', 0)
+            except Exception as e:
+                logger.warning(f"Could not get account balance from executor: {str(e)}")
+            
+            # If we couldn't get from executor, use metrics
+            if balance == 0:
+                balance = metrics.get('current_balance', self.config.get('initial_balance', 10000))
+                equity = metrics.get('current_equity', balance)
+                unrealized_pnl = equity - balance
+            
+            return html.Div([
+                dbc.Row([
+                    dbc.Col([
+                        # Account Balance Section
+                        html.Div([
+                            html.H3("Account Overview", className="text-primary"),
+                            html.H4(f"Cash Balance: ${balance:,.2f}", className="mt-2"),
+                            html.H4(f"Total Equity: ${equity:,.2f}", className="mt-2"),
+                            html.H4(f"Unrealized P&L: ${unrealized_pnl:,.2f}", 
+                                className=f"{'text-success' if unrealized_pnl >= 0 else 'text-danger'} mt-2")
+                        ], className="p-3 border rounded bg-light mb-3"),
+                        
+                        # Performance Metrics Section
+                        html.Div([
+                            html.H3("Trading Performance", className="text-primary"),
+                            html.H4(f"Total Trades: {metrics.get('total_trades', 0)}"),
+                            html.H4(f"Win Rate: {metrics.get('win_rate', 0):.2%}"),
+                            html.H4(f"Total P&L: ${metrics.get('total_pnl', 0):,.2f}"),
+                            html.H4(f"Avg Win: ${metrics.get('avg_win', 0):,.2f}"),
+                            html.H4(f"Avg Loss: ${metrics.get('avg_loss', 0):,.2f}"),
+                            html.H4(f"Profit Factor: {metrics.get('profit_factor', 0):.2f}")
+                        ], className="p-3 border rounded bg-light")
+                    ])
+                ])
+            ])
+                
+        except Exception as e:
+            logger.error(f"Error creating metrics display: {str(e)}")
+            return html.Div("Error loading metrics")
+
+    def _create_trades_table(self, trades_df: pd.DataFrame) -> html.Div:
+        """Create active trades table with live prices"""
+        try:
+            if trades_df.empty:
+                return html.Div("No active trades")
+            
+            # Try to get latest prices from paper trading executor
+            latest_prices = {}
+            try:
+                # Import here to avoid circular imports
+                import importlib
+                paper_trading = importlib.import_module('src.trading.paper_trading')
+                if hasattr(paper_trading, 'paper_trading_executor'):
+                    latest_prices = paper_trading.paper_trading_executor.latest_prices
+            except Exception as e:
+                logger.warning(f"Could not get latest prices: {str(e)}")
+            
+            # Add current price based on latest data
+            trades_df['current_price'] = trades_df.apply(
+                lambda row: latest_prices.get(row['symbol'], row['entry_price']),
+                axis=1
+            )
+            
+            # Calculate unrealized P&L
+            trades_df['unrealized_pnl'] = trades_df.apply(self._calculate_unrealized_pnl, axis=1)
+            
+            # Create table
+            table_header = [
+                html.Thead(html.Tr([
+                    html.Th("Symbol"),
+                    html.Th("Side"),
+                    html.Th("Entry Price"),
+                    html.Th("Current Price"),
+                    html.Th("Size"),
+                    html.Th("Unrealized P&L"),
+                    html.Th("P&L %"),
+                    html.Th("Duration")
+                ]))
+            ]
+            
+            rows = []
+            for _, trade in trades_df.iterrows():
+                # Calculate P&L percentage
+                entry_price = trade['entry_price']
+                current_price = trade['current_price']
+                pnl_pct = 0
+                
+                if trade['side'] == 'long':
+                    pnl_pct = (current_price / entry_price - 1) * 100
+                else:  # short
+                    pnl_pct = (entry_price / current_price - 1) * 100
+                
+                # Determine row color based on P&L
+                row_class = "table-success" if trade['unrealized_pnl'] > 0 else "table-danger"
+                
+                rows.append(html.Tr([
+                    html.Td(trade['symbol']),
+                    html.Td(trade['side']),
+                    html.Td(f"${trade['entry_price']:,.2f}"),
+                    html.Td(f"${trade['current_price']:,.2f}"),
+                    html.Td(f"{trade['size']:.4f}"),
+                    html.Td(f"${trade['unrealized_pnl']:,.2f}"),
+                    html.Td(f"{pnl_pct:.2f}%"),
+                    html.Td(self._format_duration(trade['entry_time']))
+                ], className=row_class))
+            
+            table_body = [html.Tbody(rows)]
+            
+            return dbc.Table(
+                table_header + table_body,
+                bordered=True,
+                dark=True,
+                hover=True,
+                responsive=True,
+                striped=True
+            )
+            
+        except Exception as e:
+            logger.error(f"Error creating trades table: {str(e)}")
+            return html.Div("Error loading trades")
     
     def _format_duration(self, timestamp):
         """Format time duration"""
