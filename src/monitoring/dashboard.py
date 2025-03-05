@@ -549,11 +549,12 @@ class DashboardManager:
             html.H5(f"API Latency: {health.get('api_latency', 'unknown')}")
         ])
     
+    # Find the run_server method in DashboardManager class
     def run(self, host: str = '0.0.0.0', port: int = None):
         """Run the dashboard server"""
         try:
             port = port or self.config.get('dashboard_port', 8050)
-            logger.info(f"Starting dashboard on port {port}")
+            logger.info(f"Starting dashboard on {host}:{port}")
             self.app.run_server(host=host, port=port, debug=False)
         except Exception as e:
             logger.error(f"Failed to start dashboard: {str(e)}")
@@ -561,3 +562,14 @@ class DashboardManager:
 
 # Global dashboard instance
 dashboard = DashboardManager()
+
+# Add this at the end of dashboard.py
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description='Run trading dashboard')
+    parser.add_argument('--host', default='0.0.0.0', help='Host to bind to')
+    parser.add_argument('--port', type=int, default=8050, help='Port to bind to')
+    args = parser.parse_args()
+    
+    dashboard = DashboardManager()
+    dashboard.run(host=args.host, port=args.port)

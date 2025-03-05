@@ -278,3 +278,36 @@ def parse_arguments():
     )
     
     return parser.parse_args()
+
+# Add to deploy.py to save process IDs
+def start_full_system():
+    try:
+        # Start data streaming
+        stream_process = subprocess.Popen([sys.executable, '-m', 'src.data.stream'])
+        logger.info(f"Started data streaming (PID: {stream_process.pid})")
+        
+        # Start trading system
+        trading_process = subprocess.Popen([sys.executable, '-m', 'src.scripts.run'])
+        logger.info(f"Started trading system (PID: {trading_process.pid})")
+        
+        # Start monitoring dashboard with host binding
+        dashboard_process = subprocess.Popen([
+            sys.executable, '-m', 'src.monitoring.dashboard',
+            '--host', '0.0.0.0'  # Bind to all interfaces
+        ])
+        logger.info(f"Started monitoring dashboard (PID: {dashboard_process.pid})")
+        
+        # Save PIDs to file for later monitoring
+        with open('process_ids.txt', 'w') as f:
+            f.write(f"stream_pid={stream_process.pid}\n")
+            f.write(f"trading_pid={trading_process.pid}\n")
+            f.write(f"dashboard_pid={dashboard_process.pid}\n")
+            
+    except Exception as e:
+        logger.error(f"Error starting system components: {e}")
+        raise
+
+# Add this at the end of deploy.py
+if __name__ == "__main__":
+    args = parse_arguments()
+    deploy_system(args)
