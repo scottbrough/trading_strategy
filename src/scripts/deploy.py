@@ -12,6 +12,7 @@ import yaml
 import psycopg2
 from datetime import datetime
 import logging
+import time
 
 
 def setup_logging():
@@ -146,11 +147,11 @@ def deploy_system(args):
         
         # Start system components
         if args.mode == 'full':
-            start_full_system()
+            start_full_system(config)
         elif args.mode == 'backtest':
             start_backtest_mode()
         elif args.mode == 'paper':
-            start_paper_trading()
+            start_paper_trading(config)
         
         logger.info("System deployment completed successfully")
         
@@ -158,24 +159,6 @@ def deploy_system(args):
         logger.error(f"Deployment failed: {e}")
         sys.exit(1)
 
-def start_full_system():
-    """Start all system components"""
-    try:
-        # Start data streaming
-        subprocess.Popen([sys.executable, '-m', 'src.data.stream'])
-        logger.info("Started data streaming")
-        
-        # Start trading system
-        subprocess.Popen([sys.executable, '-m', 'src.scripts.run'])
-        logger.info("Started trading system")
-        
-        # Start monitoring dashboard
-        subprocess.Popen([sys.executable, '-m', 'src.monitoring.dashboard'])
-        logger.info("Started monitoring dashboard")
-        
-    except Exception as e:
-        logger.error(f"Error starting system components: {e}")
-        raise
 
 def start_backtest_mode():
     """Start system in backtest mode"""
@@ -193,14 +176,14 @@ def start_backtest_mode():
         logger.error(f"Error starting backtest mode: {e}")
         raise
 
-def start_paper_trading():
+def start_paper_trading(config):
     """Start system in paper trading mode"""
     try:
         # Set environment to sandbox
         os.environ['TRADING_ENV'] = 'sandbox'
         
         # Start paper trading components
-        start_full_system()
+        start_full_system(config)
         logger.info("Started system in paper trading mode")
         
     except Exception as e:
@@ -279,22 +262,44 @@ def parse_arguments():
     
     return parser.parse_args()
 
-# Add to deploy.py to save process IDs
-def start_full_system():
+def start_full_system(config):
+    """Start all system components with improved process management"""
     try:
         # Start data streaming
-        stream_process = subprocess.Popen([sys.executable, '-m', 'src.data.stream'])
+        stream_process = subprocess.Popen(
+            [sys.executable, '-m', 'src.data.stream'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
         logger.info(f"Started data streaming (PID: {stream_process.pid})")
         
-        # Start trading system
-        trading_process = subprocess.Popen([sys.executable, '-m', 'src.scripts.run'])
+        # Wait a bit for the stream to initialize
+        time.sleep(2)
+        
+        # Start trading system with the appropriate mode
+        if os.environ.get('TRADING_ENV') == 'sandbox':
+            trading_process = subprocess.Popen(
+                [sys.executable, '-m', 'src.scripts.run', '--paper'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+        else:
+            trading_process = subprocess.Popen(
+                [sys.executable, '-m', 'src.scripts.run'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
         logger.info(f"Started trading system (PID: {trading_process.pid})")
         
+        # Wait a bit for the trading system to initialize
+        time.sleep(2)
+        
         # Start monitoring dashboard with host binding
-        dashboard_process = subprocess.Popen([
-            sys.executable, '-m', 'src.monitoring.dashboard',
-            '--host', '0.0.0.0'  # Bind to all interfaces
-        ])
+        dashboard_process = subprocess.Popen(
+            [sys.executable, '-m', 'src.monitoring.dashboard', '--host', '0.0.0.0'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
         logger.info(f"Started monitoring dashboard (PID: {dashboard_process.pid})")
         
         # Save PIDs to file for later monitoring
@@ -302,6 +307,34 @@ def start_full_system():
             f.write(f"stream_pid={stream_process.pid}\n")
             f.write(f"trading_pid={trading_process.pid}\n")
             f.write(f"dashboard_pid={dashboard_process.pid}\n")
+        
+        # Check if processes are still running after a short delay
+        time.sleep(5)
+        
+        processes = [
+            ('Data Stream', stream_process),
+            ('Trading System', trading_process),
+            ('Dashboard', dashboard_process)
+        ]
+        
+        all_running = True
+        for name, process in processes:
+            if process.poll() is not None:
+                # Process has terminated
+                stdout, stderr = process.communicate()
+                logger.error(f"{name} process terminated unexpectedly")
+                logger.error(f"STDOUT: {stdout.decode('utf-8')}")
+                logger.error(f"STDERR: {stderr.decode('utf-8')}")
+                all_running = False
+        
+        if all_running:
+            logger.info("All components started successfully!")
+            
+            # Print dashboard URL
+            dashboard_port = config.get('monitoring', {}).get('dashboard_port', 8050)
+            logger.info(f"Dashboard is available at: http://localhost:{dashboard_port}")
+        else:
+            logger.error("Some components failed to start. Check the logs for details.")
             
     except Exception as e:
         logger.error(f"Error starting system components: {e}")

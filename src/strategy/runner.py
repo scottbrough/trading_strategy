@@ -8,6 +8,7 @@ import importlib
 import asyncio
 import json
 from typing import Dict, List, Any, Optional
+import inspect
 from datetime import datetime, timedelta
 import time
 import threading
@@ -23,12 +24,22 @@ from .risk_management import RiskManager
 logger = log_manager.get_logger(__name__)
 
 class StrategyRunner:
-    def __init__(self):
+    def __init__(self, paper_trading=False):
         """Initialize strategy runner"""
         self.stream_manager = KrakenStreamManager()
         self.data_processor = DataProcessor()
         self.risk_manager = RiskManager(config.get('risk_params', {}))
-        self.executor = OrderExecutor(self.stream_manager, self.risk_manager)
+        
+        # Choose executor based on mode
+        if paper_trading or config.is_sandbox():
+            from ..trading.paper_trading import PaperTradingExecutor
+            self.executor = PaperTradingExecutor()
+            self.is_paper_trading = True
+            logger.info("Using paper trading executor")
+        else:
+            self.executor = OrderExecutor(self.stream_manager, self.risk_manager)
+            self.is_paper_trading = False
+            logger.info("Using live order executor")
         
         self.strategies = {}
         self.running = False
@@ -49,7 +60,7 @@ class StrategyRunner:
             logger.error(f"Failed to initialize strategy runner: {str(e)}")
             return False
             
-    async def load_strategy(self, strategy_name: str, strategy_config: Dict[str, Any] = None) -> bool:
+    async def load_strategy(self, strategy_name: str, strategy_config: Dict[str, Any] = None, class_name: str = None) -> bool:
         """Load a strategy module and initialize the strategy"""
         try:
             # Import strategy module
@@ -57,17 +68,27 @@ class StrategyRunner:
             module = importlib.import_module(module_path)
             
             # Get the strategy class
-            class_name = strategy_name.split('.')[-1]
-            if '.' in strategy_name:
-                class_name = strategy_name.split('.')[-1]
-            else:
+            if class_name is None:
                 # Try to find the class in the module
-                for attr_name in dir(module):
-                    if attr_name.lower() == strategy_name.lower() + 'strategy':
-                        class_name = attr_name
-                        break
+                class_name = strategy_name.split('.')[-1]
+                # Convert snake_case to PascalCase
+                class_name = ''.join(word.capitalize() for word in class_name.split('_'))
+                if not class_name.endswith('Strategy'):
+                    class_name = f"{class_name}Strategy"
             
-            strategy_class = getattr(module, class_name)
+            # Try to get the class
+            if hasattr(module, class_name):
+                strategy_class = getattr(module, class_name)
+            else:
+                # Search for any class that ends with 'Strategy'
+                strategy_classes = [obj for name, obj in inspect.getmembers(module) 
+                                if inspect.isclass(obj) and name.endswith('Strategy')]
+                if strategy_classes:
+                    strategy_class = strategy_classes[0]
+                    class_name = strategy_classes[0].__name__
+                    logger.info(f"Found strategy class: {class_name}")
+                else:
+                    raise AttributeError(f"No strategy class found in module {module_path}")
             
             # Initialize strategy with config
             strategy_instance = strategy_class(strategy_config or {})
@@ -81,7 +102,7 @@ class StrategyRunner:
                 'last_run': None
             }
             
-            logger.info(f"Loaded strategy: {strategy_name}")
+            logger.info(f"Loaded strategy: {class_name}")
             return True
             
         except Exception as e:

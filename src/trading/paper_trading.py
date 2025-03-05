@@ -35,9 +35,71 @@ class PaperTradingExecutor:
         
         # Initialize metrics
         self._record_equity()
-        
-    async def place_order(self, order_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Simulate placing an order"""
+    
+    async def start(self):
+        """Start the executor - required for compatibility with OrderExecutor"""
+        logger.info("Paper trading executor started")
+        return True
+
+    async def stop(self):
+        """Stop the executor - required for compatibility with OrderExecutor"""
+        logger.info("Paper trading executor stopped")
+        return True
+
+    async def add_signal(self, signal):
+        """Process a trading signal"""
+        try:
+            logger.info(f"Paper trading signal received: {signal}")
+            
+            # Extract signal details
+            symbol = signal['symbol']
+            action = signal['action']
+            price = signal['price']
+            size = signal.get('size', 1.0)
+            
+            # Create order data
+            order_data = {
+                'symbol': symbol,
+                'price': price,
+                'size': size
+            }
+            
+            # Process based on action
+            if action == 'buy':
+                order_data['side'] = 'buy'
+                # Use the non-async version directly
+                result = self._place_order_sync(order_data)
+            elif action == 'sell':
+                order_data['side'] = 'sell'
+                # Use the non-async version directly
+                result = self._place_order_sync(order_data)
+            elif action == 'exit':
+                # Find if we have any position for this symbol
+                for symbol_pos, position in self.positions.items():
+                    if symbol_pos == symbol:
+                        # Close position
+                        side = 'sell' if position['side'] == 'long' else 'buy'
+                        order_data['side'] = side
+                        # Use the non-async version directly
+                        result = self._place_order_sync(order_data)
+                        break
+                else:
+                    logger.warning(f"No position to exit for {symbol}")
+                    return False
+            
+            logger.info(f"Paper trading signal processed: {result}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error processing paper trading signal: {str(e)}")
+            return False
+            
+    async def place_order(self, order_data):
+        """Async wrapper for the synchronous place_order method"""
+        return self._place_order_sync(order_data)
+
+    def _place_order_sync(self, order_data):
+        """Synchronous implementation of place order"""
         try:
             # Generate order ID
             order_id = f"paper_{int(time.time() * 1000)}_{len(self.orders)}"
@@ -215,7 +277,7 @@ class PaperTradingExecutor:
         
         # Record equity
         self._record_equity()
-        
+    
     def _update_positions(self):
         """Update position values with latest prices"""
         for symbol, position in self.positions.items():
@@ -252,7 +314,7 @@ class PaperTradingExecutor:
             'timestamp': datetime.now(),
             'equity': equity
         })
-        
+    
     def get_account_balance(self) -> Dict[str, Any]:
         """Get current account balance"""
         total_equity = self.balance
@@ -269,15 +331,69 @@ class PaperTradingExecutor:
             'equity': total_equity,
             'unrealized_pnl': unrealized_pnl
         }
-        
+    
     def get_positions(self) -> List[Dict[str, Any]]:
         """Get current positions"""
         return list(self.positions.values())
-        
+    
     def get_trade_history(self) -> List[Dict[str, Any]]:
         """Get trade history"""
         return self.trade_history
-        
+    
     def get_equity_history(self) -> pd.DataFrame:
         """Get equity history as DataFrame"""
         return pd.DataFrame(self.equity_history)
+    
+    def get_ticker_sync(self, symbol):
+        """Synchronous version of get_ticker"""
+        if symbol in self.latest_prices:
+            price = self.latest_prices[symbol]
+        else:
+            # Use a reasonable default price for testing
+            price = 50000 if 'BTC' in symbol else 2000 if 'ETH' in symbol else 100
+            self.latest_prices[symbol] = price
+        
+        return {
+            'symbol': symbol,
+            'last_price': price,
+            'bid': price * 0.999,
+            'ask': price * 1.001,
+            'volume': 100,
+            'timestamp': datetime.now()
+        }
+    
+    async def get_ticker(self, symbol):
+        """Async wrapper for get_ticker_sync"""
+        return self.get_ticker_sync(symbol)
+    
+    def generate_mock_price_updates(self):
+        """Generate mock price updates for testing"""
+        import threading
+        import random
+        import time
+        
+        def update_prices():
+            symbols = ['BTC/USD', 'ETH/USD']
+            
+            while True:
+                for symbol in symbols:
+                    # Get current price or set initial
+                    if symbol in self.latest_prices:
+                        current = self.latest_prices[symbol]
+                    else:
+                        current = 50000 if symbol == 'BTC/USD' else 2000
+                    
+                    # Random walk price
+                    change_pct = random.uniform(-0.002, 0.002)  # 0.2% max change
+                    new_price = current * (1 + change_pct)
+                    
+                    # Update price
+                    self.update_price(symbol, new_price)
+                
+                # Sleep for 10 seconds
+                time.sleep(10)
+        
+        # Start in a background thread
+        price_thread = threading.Thread(target=update_prices, daemon=True)
+        price_thread.start()
+        logger.info("Started mock price update thread")

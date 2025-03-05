@@ -19,63 +19,62 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Create trades table
-    op.create_table(
-        'trades',
-        sa.Column('id', sa.Integer, primary_key=True),
-        sa.Column('symbol', sa.String(20), nullable=False),
-        sa.Column('side', sa.String(4), nullable=False),
-        sa.Column('entry_price', sa.Float, nullable=False),
-        sa.Column('exit_price', sa.Float),
-        sa.Column('amount', sa.Float, nullable=False),
-        sa.Column('entry_time', sa.DateTime, nullable=False),
-        sa.Column('exit_time', sa.DateTime),
-        sa.Column('pnl', sa.Float),
-        sa.Column('status', sa.String(10), nullable=False),
-        sa.Column('strategy', sa.String(50)),
-        sa.Column('parameters', sa.JSON)
+    # Create trades table with IF NOT EXISTS
+    op.execute("""
+    CREATE TABLE IF NOT EXISTS trades (
+        id SERIAL NOT NULL,
+        symbol VARCHAR(20) NOT NULL,
+        side VARCHAR(4) NOT NULL,
+        entry_price FLOAT NOT NULL,
+        exit_price FLOAT,
+        amount FLOAT NOT NULL,
+        entry_time TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+        exit_time TIMESTAMP WITHOUT TIME ZONE,
+        pnl FLOAT,
+        status VARCHAR(10) NOT NULL,
+        strategy VARCHAR(50),
+        parameters JSON,
+        PRIMARY KEY (id)
     )
+    """)
     
-    # Create OHLCV table
-    op.create_table(
-        'ohlcv',
-        sa.Column('id', sa.Integer, primary_key=True),
-        sa.Column('symbol', sa.String(20), nullable=False),
-        sa.Column('timestamp', sa.DateTime, nullable=False),
-        sa.Column('timeframe', sa.String(3), nullable=False),
-        sa.Column('open', sa.Float, nullable=False),
-        sa.Column('high', sa.Float, nullable=False),
-        sa.Column('low', sa.Float, nullable=False),
-        sa.Column('close', sa.Float, nullable=False),
-        sa.Column('volume', sa.Float, nullable=False)
+    # Do the same for other tables
+    op.execute("""
+    CREATE TABLE IF NOT EXISTS ohlcv (
+        id SERIAL NOT NULL,
+        symbol VARCHAR(20) NOT NULL,
+        timestamp TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+        timeframe VARCHAR(3) NOT NULL,
+        open FLOAT NOT NULL,
+        high FLOAT NOT NULL,
+        low FLOAT NOT NULL,
+        close FLOAT NOT NULL,
+        volume FLOAT NOT NULL,
+        PRIMARY KEY (id)
     )
+    """)
     
-    # Create Performance metrics table
-    op.create_table(
-        'performance',
-        sa.Column('id', sa.Integer, primary_key=True),
-        sa.Column('timestamp', sa.DateTime, nullable=False),
-        sa.Column('equity', sa.Float, nullable=False),
-        sa.Column('realized_pnl', sa.Float, nullable=False),
-        sa.Column('unrealized_pnl', sa.Float),
-        sa.Column('total_trades', sa.Integer),
-        sa.Column('win_rate', sa.Float),
-        sa.Column('sharpe_ratio', sa.Float),
-        sa.Column('sortino_ratio', sa.Float),
-        sa.Column('max_drawdown', sa.Float),
-        sa.Column('volatility', sa.Float)
+    op.execute("""
+    CREATE TABLE IF NOT EXISTS performance (
+        id SERIAL NOT NULL,
+        timestamp TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+        equity FLOAT NOT NULL,
+        realized_pnl FLOAT NOT NULL,
+        unrealized_pnl FLOAT,
+        total_trades INTEGER,
+        win_rate FLOAT,
+        sharpe_ratio FLOAT,
+        sortino_ratio FLOAT,
+        max_drawdown FLOAT,
+        volatility FLOAT,
+        PRIMARY KEY (id)
     )
+    """)
     
-    # Add indices for performance
-    op.create_index('ix_trades_symbol', 'trades', ['symbol'])
-    op.create_index('ix_trades_entry_time', 'trades', ['entry_time'])
-    op.create_index('ix_trades_status', 'trades', ['status'])
+    # Create indices
+    op.execute("CREATE INDEX IF NOT EXISTS ix_trades_symbol ON trades (symbol)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_trades_entry_time ON trades (entry_time)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_trades_status ON trades (status)")
     
-    op.create_index('ix_ohlcv_symbol_tf_ts', 'ohlcv', ['symbol', 'timeframe', 'timestamp'])
-    op.create_index('ix_performance_timestamp', 'performance', ['timestamp'])
-
-
-def downgrade() -> None:
-    op.drop_table('performance')
-    op.drop_table('ohlcv')
-    op.drop_table('trades')
+    op.execute("CREATE INDEX IF NOT EXISTS ix_ohlcv_symbol_tf_ts ON ohlcv (symbol, timeframe, timestamp)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_performance_timestamp ON performance (timestamp)")
