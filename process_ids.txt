@@ -1,3 +1,0 @@
-stream_pid=17592
-trading_pid=17512
-dashboard_pid=8868

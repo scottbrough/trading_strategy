@@ -64,7 +64,7 @@ class StrategyRunner:
         """Load a strategy module and initialize the strategy"""
         try:
             # Import strategy module
-            module_path = f"src.strategy.implementations.{strategy_name}"
+            module_path = f"strategy.implementations.{strategy_name}"
             module = importlib.import_module(module_path)
             
             # Get the strategy class

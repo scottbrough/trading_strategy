@@ -1,0 +1,28 @@
+# Mean Reversion Strategy Configuration
+strategy:
+  # Required parameters
+  risk_fraction: 0.02
+  max_position_size: 0.2
+  min_position_size: 0.01
+  stop_loss: 0.05
+  profit_target: 0.08  # Usually lower for mean reversion
+  amount: 1.0  # Default amount for position sizing
+  
+  # Strategy-specific parameters
+  lookback_periods: 20
+  zscore_threshold: 2.0
+  volatility_factor: 0.5
+  risk_factor: 0.02
+  capital: 10000
+  
+  # Mean reversion indicators
+  bb_period: 20
+  bb_stddev: 2.0
+  rsi_period: 14
+  rsi_entry_oversold: 30
+  rsi_entry_overbought: 70
+  
+  # Risk parameters
+  max_daily_loss: 0.05
+  max_correlation: 0.7
+  var_limit: -0.1

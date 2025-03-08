@@ -6,16 +6,16 @@ Script to check database connectivity and initialize database if needed.
 import sys
 import os
 from pathlib import Path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 # Get the absolute path to the project root directory
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 # Now import the modules
-from src.core.logger import log_manager
-from src.core.config import config
-from src.core.db_init import DatabaseInitializer
-from src.data.database import db
+from ..core.logger import log_manager
+from ..core.db_init import DatabaseInitializer
+from ..data.database import db
 
 logger = log_manager.get_logger(__name__)
 
