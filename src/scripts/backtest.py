@@ -93,10 +93,21 @@ def load_strategy_config(config_path):
 def load_strategy_class(strategy_path):
     """Dynamically load strategy class"""
     try:
-        # Parse module and class name
-        parts = strategy_path.split('.')
-        class_name = parts[-1]
-        module_path = '.'.join(parts[:-1])
+        if '.' in strategy_path:
+            # Parse module and class name if dot notation is used
+            parts = strategy_path.split('.')
+            class_name = parts[-1]
+            module_path = '.'.join(parts[:-1])
+        else:
+            # Handle just strategy name without class
+            module_path = strategy_path
+            # Convert snake_case to PascalCase and add 'Strategy' suffix
+            class_name = ''.join(word.capitalize() for word in strategy_path.split('_'))
+            if not class_name.endswith('Strategy'):
+                class_name = f"{class_name}Strategy"
+        
+        # Dynamically import module
+        module = importlib.import_module(f"src.strategy.implementations.{module_path}")
         
         # Dynamically import module
         module = importlib.import_module(f"src.strategy.implementations.{module_path}")
