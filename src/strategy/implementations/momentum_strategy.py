@@ -192,24 +192,27 @@ class MomentumStrategy(BaseStrategy):
             logger.error(f"Error checking exit conditions: {str(e)}")
             return {'should_exit': False, 'reason': None}
     
-    def _calculate_position_size(self, candle: pd.Series, signal_strength: float) -> float:
-        """Calculate position size based on signal strength and ATR"""
+    def _calculate_position_size(self, candle: pd.Series, signal_strength: float, current_capital: float) -> float:
+        """Calculate position size based on signal strength, ATR, and CURRENT capital"""
         try:
-            # Get base position size
-            base_size = self.params['risk_factor'] * self.params['capital']
+            # Use CURRENT capital instead of initial capital
+            base_size_usd = self.params['risk_factor'] * current_capital
+            
+            # Convert to quantity based on current price
+            base_quantity = base_size_usd / candle['close']
             
             # Adjust for signal strength
-            size = base_size * signal_strength
+            quantity = base_quantity * signal_strength
             
             # Adjust for volatility using ATR
             atr_factor = 1.0 - (candle['atr'] / candle['close'])
-            size *= max(0.2, min(atr_factor, 1.0))
+            quantity *= max(0.2, min(atr_factor, 1.0))
             
-            # Apply position limits
-            max_size = self.params['max_position_size'] * self.params['capital']
-            min_size = self.params['min_position_size'] * self.params['capital']
+            # Apply position limits as QUANTITIES
+            max_quantity = (self.params['max_position_size'] * current_capital) / candle['close']
+            min_quantity = (self.params['min_position_size'] * current_capital) / candle['close']
             
-            return max(min_size, min(size, max_size))
+            return max(min_quantity, min(quantity, max_quantity))
             
         except Exception as e:
             logger.error(f"Error calculating position size: {str(e)}")

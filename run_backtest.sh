@@ -14,7 +14,6 @@ INITIAL_CAPITAL=10000
 PLOT=true
 
 # Run the backtest
-echo "Running backtest with Python path: $PYTHONPATH"
 python -m src.scripts.backtest \
   --strategy ${STRATEGY} \
   --symbols ${SYMBOLS} \
@@ -22,6 +21,7 @@ python -m src.scripts.backtest \
   --start-date ${START_DATE} \
   --end-date ${END_DATE} \
   --initial-capital ${INITIAL_CAPITAL} \
+  --config config/momentum_config.yaml \
   --plot
 
 # Check if backtest was successful

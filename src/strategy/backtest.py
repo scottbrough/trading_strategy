@@ -136,6 +136,12 @@ class BacktestEngine:
         """Generate trading signals from strategy"""
         all_signals = []
         
+        # Initialize or update strategy parameters once
+        if not hasattr(strategy, 'params'):
+            strategy.params = {}
+        strategy.params['current_capital'] = self.current_capital
+        
+        # Generate signals for each symbol
         for symbol, df in data_dict.items():
             try:
                 # Generate signals for this symbol
