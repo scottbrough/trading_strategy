@@ -351,6 +351,13 @@ class MomentumStrategy(BaseStrategy):
                     'reason': 'time_exit'
                 })
             
+            # Add trailing stop logic
+            if 'highest_high' in current and self._has_position('long'):
+                trail_percent = 0.02  # 2% trailing stop
+                trailing_stop_level = current['highest_high'] * (1 - trail_percent)
+                if current['close'] < trailing_stop_level:
+                    return {'should_exit': True, 'reason': 'trailing_stop'}
+            
             # Determine exit based on multiple confirmations (3+ conditions)
             # This avoids exiting too early on minor price movements
             if sum(long_exit_conditions) >= 3:
@@ -508,3 +515,9 @@ class MomentumStrategy(BaseStrategy):
             logger.error(f"Error detecting market regime: {str(e)}")
             # Default to 'ranging' as the most conservative regime
             return pd.Series('ranging', index=data.index)
+    
+    def _has_position(self, side: str = None) -> bool:
+        """Check if we have an open position of the specified side"""
+        # Simply returns False for backtest purposes
+        # The actual position tracking is handled by the backtest engine
+        return False

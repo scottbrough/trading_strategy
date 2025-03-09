@@ -1,0 +1,15 @@
+strategy:
+  adx_threshold: 35
+  current_capital: 10000
+  max_position_size: 0.2
+  max_trades_per_day: 10
+  min_hours_between_trades: 5
+  min_position_size: 0.01
+  profit_target: 0.05171871937655084
+  require_trend_alignment: true
+  require_volume_confirmation: true
+  risk_factor: 0.02
+  risk_fraction: 0.02
+  rsi_overbought: 80
+  rsi_oversold: 20
+  stop_loss: 0.04608258890530529

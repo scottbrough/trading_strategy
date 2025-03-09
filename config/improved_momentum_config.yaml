@@ -9,5 +9,5 @@ strategy:
   profit_target: 0.07
   require_volume_confirmation: true
   require_trend_alignment: true
-  min_hours_between_trades: 4
-  max_trades_per_day: 3
+  min_hours_between_trades: 2
+  max_trades_per_day: 5
