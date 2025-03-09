@@ -12,7 +12,7 @@ import importlib
 import sys
 import yaml
 import numpy as np
-from src.strategy.backtest import WalkForwardOptimizer
+from src.strategy.optimize import WalkForwardOptimizer
 
 from ..core.logger import log_manager
 from ..core.config import config
@@ -86,6 +86,8 @@ def load_strategy_config(config_path):
     try:
         with open(config_path, 'r') as f:
             return yaml.safe_load(f)
+        print(f"DEBUG: Loaded config from {config_path}: {config}")  # Add this line
+
     except Exception as e:
         logger.error(f"Failed to load strategy config: {str(e)}")
         return {}

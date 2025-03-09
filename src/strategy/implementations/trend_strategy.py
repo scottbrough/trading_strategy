@@ -80,6 +80,11 @@ class TrendStrategy(BaseStrategy):
     def _calculate_trend_score(self, data: pd.DataFrame) -> pd.Series:
         """Calculate comprehensive trend score"""
         try:
+
+            if 'ema_9' not in data.columns or 'ema_21' not in data.columns:
+                # Calculate missing EMAs
+                data['ema_9'] = data['close'].ewm(span=9).mean() if 'ema_9' not in data.columns else data['ema_9']
+                data['ema_21'] = data['close'].ewm(span=21).mean() if 'ema_21' not in data.columns else data['ema_21']
             # EMA alignment score
             ema_score = np.where(
                 (data['ema_9'] > data['ema_21']) &

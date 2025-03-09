@@ -41,6 +41,10 @@ class BaseStrategy(ABC):
         
         missing_params = [p for p in required_params if p not in self.params]
         if missing_params:
+            print("DEBUG: Configuration received:")
+            print(f"self.config = {self.config}")
+            print(f"self.params = {self.params}")
+            print(f"Missing parameters: {missing_params}")
             raise StrategyError.ValidationError(
                 "Missing required parameters",
                 details={'missing': missing_params}

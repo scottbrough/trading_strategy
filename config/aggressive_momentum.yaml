@@ -5,7 +5,7 @@ strategy:
   max_trades_per_day: 15
   min_hours_between_trades: 1
   min_position_size: 0.01
-  profit_target: 0.05171871937655084
+  profit_target: 0.075
   require_trend_alignment: false
   require_volume_confirmation: false
   risk_factor: 0.02
