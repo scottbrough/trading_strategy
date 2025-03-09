@@ -28,13 +28,18 @@ class MomentumStrategy(BaseStrategy):
         self.last_signal_time = None
         self.trades_today = 0
         self.current_day = None
+        # Store trade history for position sizing adaptation
+        self.recent_trades = []  
+        # Track highest price during trade for trailing stop
+        self.highest_high = {}
     
-    def generate_signals(self, data: pd.DataFrame) -> List[Dict]:
+    def generate_signals(self, data: pd.DataFrame, higher_tf_df: pd.DataFrame = None) -> List[Dict]:
         """
         Generate trading signals based on momentum indicators with improved quality
         
         Args:
             data: DataFrame with OHLCV and indicator data
+            higher_tf_df: Optional higher timeframe data for confirmation
             
         Returns:
             List of signal dictionaries
@@ -51,6 +56,9 @@ class MomentumStrategy(BaseStrategy):
             # Add market regime detection
             data['regime'] = self._detect_market_regime(data)
             
+            # Add trailing high/low calculations
+            self._add_trailing_price_data(data)
+            
             # Reset trade counter on new day
             self._reset_daily_counters(data)
             
@@ -64,8 +72,12 @@ class MomentumStrategy(BaseStrategy):
                 if self._trade_limit_reached(current):
                     continue
                 
-                # Skip if not in a trending market regime
+                # Skip if not in a favorable market regime
                 if current['regime'] != 'trending' and self.params.get('require_trend_confirmation', True):
+                    continue
+                
+                # Check higher timeframe alignment if provided
+                if higher_tf_df is not None and not self._check_higher_timeframe_alignment(current, higher_tf_df):
                     continue
                 
                 # Calculate signal strength and conditions
@@ -90,7 +102,8 @@ class MomentumStrategy(BaseStrategy):
                             'rsi': current['rsi'],
                             'macd_hist': current['macd_hist'],
                             'adx': current['adx'],
-                            'regime': current['regime']
+                            'regime': current['regime'],
+                            'confluence_score': entry_conditions.get('confluence_score', 0)
                         }
                     }
                     signals.append(signal)
@@ -115,6 +128,14 @@ class MomentumStrategy(BaseStrategy):
         except Exception as e:
             logger.error(f"Error generating signals: {str(e)}")
             return []
+    
+    def _add_trailing_price_data(self, data: pd.DataFrame) -> None:
+        """Add trailing high/low calculations for each symbol"""
+        # Calculate highest high over last 10 periods for trailing stop
+        data['highest_high'] = data['high'].rolling(10).max()
+        data['lowest_low'] = data['low'].rolling(10).min()
+        # Track bars in trade for time-based exit
+        data['bars_in_trade'] = 0  # This would be updated during backtest or live trading
     
     def _reset_daily_counters(self, data: pd.DataFrame):
         """Reset trade counters when a new day begins"""
@@ -193,13 +214,14 @@ class MomentumStrategy(BaseStrategy):
             return 0.3  # Default to moderate strength on error
     
     def _check_entry_conditions(self, current: pd.Series, prev: pd.Series) -> Dict:
-        """Check entry conditions with stricter criteria"""
+        """Check entry conditions with stricter criteria and confluence scoring"""
         try:
             # Initialize result
             result = {
                 'should_enter': False,
                 'direction': None,
-                'reason': None
+                'reason': None,
+                'confluence_score': 0
             }
             
             # Get parameters with defaults if not specified
@@ -216,7 +238,8 @@ class MomentumStrategy(BaseStrategy):
                 current['rsi'] < rsi_oversold,  # Oversold condition
                 current['macd_hist'] > prev['macd_hist'],  # Rising momentum
                 current['adx'] > adx_threshold,  # Strong trend
-                current['slowk'] > current['slowd']  # Stochastic confirmation
+                current['slowk'] > current['slowd'],  # Stochastic confirmation
+                current['close'] > current['ema_9']  # Price above short-term MA
             ]
             
             # Add volume confirmation if required
@@ -232,7 +255,8 @@ class MomentumStrategy(BaseStrategy):
                 current['rsi'] > rsi_overbought,  # Overbought condition
                 current['macd_hist'] < prev['macd_hist'],  # Falling momentum
                 current['adx'] > adx_threshold,  # Strong trend
-                current['slowk'] < current['slowd']  # Stochastic confirmation
+                current['slowk'] < current['slowd'],  # Stochastic confirmation
+                current['close'] < current['ema_9']  # Price below short-term MA
             ]
             
             # Add volume confirmation if required
@@ -243,18 +267,27 @@ class MomentumStrategy(BaseStrategy):
             if self.params.get('require_trend_alignment', True):
                 short_conditions.append(current['close'] < current['ema_50'])
             
-            # Evaluate conditions
-            if all(long_conditions):
+            # Calculate confluence scores
+            long_confluence_score = sum(1 for cond in long_conditions if cond)
+            short_confluence_score = sum(1 for cond in short_conditions if cond)
+            
+            # Require stronger confluence (at least 4 out of 5 conditions)
+            required_confluence = 4  # Stricter requirement
+            
+            # Evaluate conditions with stricter requirements
+            if long_confluence_score >= required_confluence:
                 result.update({
                     'should_enter': True,
                     'direction': 'long',
-                    'reason': 'momentum_long'
+                    'reason': f'momentum_long_{long_confluence_score}',
+                    'confluence_score': long_confluence_score
                 })
-            elif all(short_conditions):
+            elif short_confluence_score >= required_confluence:
                 result.update({
                     'should_enter': True,
                     'direction': 'short',
-                    'reason': 'momentum_short'
+                    'reason': f'momentum_short_{short_confluence_score}',
+                    'confluence_score': short_confluence_score
                 })
             
             return result
@@ -264,7 +297,7 @@ class MomentumStrategy(BaseStrategy):
             return {'should_enter': False, 'direction': None, 'reason': None}
     
     def _check_exit_conditions(self, current: pd.Series, prev: pd.Series) -> Dict:
-        """Check exit conditions with improved criteria"""
+        """Check exit conditions with improved criteria including trailing stops"""
         try:
             # Initialize result
             result = {
@@ -300,6 +333,24 @@ class MomentumStrategy(BaseStrategy):
                 current['close'] > current['ema_9']
             ]
             
+            # Add trailing stop logic - exit when price falls below recent high
+            if 'highest_high' in current:
+                trail_percent = 0.02  # 2% trailing stop
+                trailing_stop_level = current['highest_high'] * (1 - trail_percent)
+                
+                if current['close'] < trailing_stop_level:
+                    result.update({
+                        'should_exit': True,
+                        'reason': 'trailing_stop_triggered'
+                    })
+            
+            # Add time-based exit - exit if too many bars without reaching profit target
+            if 'bars_in_trade' in current and current['bars_in_trade'] > 10:
+                result.update({
+                    'should_exit': True, 
+                    'reason': 'time_exit'
+                })
+            
             # Determine exit based on multiple confirmations (3+ conditions)
             # This avoids exiting too early on minor price movements
             if sum(long_exit_conditions) >= 3:
@@ -319,8 +370,29 @@ class MomentumStrategy(BaseStrategy):
             logger.error(f"Error checking exit conditions: {str(e)}")
             return {'should_exit': False, 'reason': None}
     
+    def _check_higher_timeframe_alignment(self, current_df: pd.Series, higher_tf_df: pd.DataFrame) -> bool:
+        """Check if higher timeframe trend aligns with entry direction"""
+        try:
+            if higher_tf_df is None or higher_tf_df.empty:
+                return True  # If no higher timeframe data, consider aligned
+                
+            # Get last row of higher timeframe data
+            higher_current = higher_tf_df.iloc[-1]
+            
+            # Check if EMAs are aligned in higher timeframe
+            ema_aligned = higher_current['ema_9'] > higher_current['ema_21'] > higher_current['ema_50']
+            
+            # Check MACD momentum in higher timeframe
+            macd_positive = higher_current['macd_hist'] > 0
+            
+            return ema_aligned and macd_positive  # For long entries
+            
+        except Exception as e:
+            logger.error(f"Error checking higher timeframe alignment: {str(e)}")
+            return True  # Default to allow trades if check fails
+    
     def _calculate_position_size(self, candle: pd.Series, signal_strength: float) -> float:
-        """Calculate position size with improved risk management"""
+        """Calculate position size with improved risk management and adaptation"""
         try:
             # Get current capital from params
             current_capital = self.params.get('current_capital', self.params.get('capital', 10000))
@@ -339,11 +411,29 @@ class MomentumStrategy(BaseStrategy):
             # Convert to quantity based on current price
             quantity = strength_adjusted_size / candle['close']
             
+            # Adjust for market regime
+            if 'regime' in candle:
+                regime_factors = {
+                    'trending': 1.0,  # Full size in trending markets
+                    'ranging': 0.6,   # Reduced size in ranging markets
+                    'volatile': 0.4   # Significantly reduced in volatile markets
+                }
+                regime = candle['regime']
+                regime_factor = regime_factors.get(regime, 0.5)
+                quantity *= regime_factor
+            
             # Adjust for volatility using ATR - reduce size in volatile markets
             if 'atr' in candle:
                 vol_ratio = candle['atr'] / candle['close']
                 vol_factor = max(0.5, 1.0 - vol_ratio * 10)  # Reduce size as volatility increases
                 quantity *= vol_factor
+            
+            # Adjust for win rate (reduce after consecutive losses)
+            if hasattr(self, 'recent_trades') and len(self.recent_trades) >= 3:
+                recent_results = [t['pnl'] > 0 for t in self.recent_trades[-3:]]
+                # If 2 or more recent losses, reduce size
+                if sum(recent_results) < 2:
+                    quantity *= 0.75
             
             # Apply position size limits based on capital
             max_quantity = (max_pos_size_pct * current_capital) / candle['close']
@@ -365,7 +455,7 @@ class MomentumStrategy(BaseStrategy):
     
     def _detect_market_regime(self, data: pd.DataFrame) -> pd.Series:
         """
-        Detect market regime (trending, ranging, volatile)
+        Detect market regime (trending, ranging, volatile) with enhanced criteria
         
         Args:
             data: DataFrame with price and indicator data
@@ -381,6 +471,10 @@ class MomentumStrategy(BaseStrategy):
                 # Calculate simple volatility if ATR not available
                 volatility = data['close'].rolling(14).std() / data['close']
                 
+            # Calculate volatility regime transitions detection
+            volatility_change = volatility.pct_change(5)
+            vol_increasing = volatility_change > 0.1
+            
             # Calculate trend direction and strength
             if 'ema_50' in data.columns:
                 direction = (data['close'] - data['ema_50']) / data['ema_50']
@@ -393,8 +487,14 @@ class MomentumStrategy(BaseStrategy):
             # Define regimes (default to ranging)
             regime = pd.Series('ranging', index=data.index)
             
-            # Trending when ADX high and consistent direction
-            trending_mask = (adx > 25) & (abs(direction) > 0.02)
+            # Add choppiness index
+            high_low_range = data['high'].rolling(14).max() - data['low'].rolling(14).min()
+            close_change = abs(data['close'] - data['close'].shift(14))
+            choppiness = 1 - (close_change / high_low_range)
+            choppy_market = choppiness > 0.5
+            
+            # Only mark trending when volatility is stable
+            trending_mask = (adx > 25) & (abs(direction) > 0.02) & ~vol_increasing & ~choppy_market
             regime[trending_mask] = 'trending'
             
             # Volatile when large price swings

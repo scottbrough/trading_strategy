@@ -5,7 +5,7 @@ position sizing, and dynamic risk adjustment.
 
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional, Union, Any
+from typing import Dict, List, Optional, Union, Any, Tuple
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import logging
@@ -490,3 +490,170 @@ class RiskManager:
             
         except Exception as e:
             logger.error(f"Error logging trade: {str(e)}")
+
+class EnhancedRiskManager:
+    """Advanced risk management for paper trading"""
+    
+    def __init__(self, config: Dict):
+        self.config = config
+        self.risk_params = config.get('risk_params', {})
+        self.positions = []
+        self.trades = []
+        self.equity_history = []
+        self.current_drawdown = 0
+        self.peak_equity = 0
+        self.last_equity_update = datetime.now()
+        
+    def update_equity(self, current_equity: float):
+        """Update equity curve and calculate drawdown"""
+        self.equity_history.append({
+            'timestamp': datetime.now(),
+            'equity': current_equity
+        })
+        
+        # Update peak equity and drawdown
+        self.peak_equity = max(self.peak_equity, current_equity)
+        self.current_drawdown = (self.peak_equity - current_equity) / self.peak_equity if self.peak_equity > 0 else 0
+        self.last_equity_update = datetime.now()
+    
+    def calculate_position_size(self, symbol: str, price: float, signal_strength: float) -> float:
+        """Calculate optimal position size with dynamic risk adjustment"""
+        # Get base parameters
+        base_risk = self.risk_params.get('base_risk_per_trade', 0.01)
+        max_position_size = self.risk_params.get('max_position_size', 0.2)
+        
+        # Get current equity and calculate maximum dollar risk
+        current_equity = self.get_current_equity()
+        
+        # Adjust risk based on current drawdown
+        if self.current_drawdown > 0.05:  # More than 5% drawdown
+            # Reduce risk as drawdown increases
+            adjusted_risk = base_risk * (1 - min(0.75, self.current_drawdown * 5))
+        else:
+            # Slightly increase risk when doing well (equity curve positive)
+            recent_performance = self.calculate_recent_performance()
+            adjusted_risk = base_risk * (1 + recent_performance * 0.2)
+        
+        # Kelly criterion adjustment if we have enough trade history
+        if len(self.trades) >= 20:
+            win_rate, win_loss_ratio = self.calculate_win_metrics()
+            kelly_fraction = max(0, win_rate - (1 - win_rate) / win_loss_ratio)
+            
+            # Apply half-Kelly for safety
+            kelly_adjusted_risk = base_risk * min(kelly_fraction * 0.5, 1.0)
+            
+            # Blend Kelly with adjusted risk
+            adjusted_risk = (adjusted_risk + kelly_adjusted_risk) / 2
+        
+        # Dollar risk amount
+        risk_amount = current_equity * adjusted_risk
+        
+        # Calculate position size based on price and volatility
+        volatility = self.get_symbol_volatility(symbol)
+        stop_size = self.calculate_stop_distance(symbol, price, volatility)
+        
+        # Base size calculation
+        if stop_size > 0:
+            base_position_size = risk_amount / stop_size
+        else:
+            # Fallback using fixed percentage
+            stop_percent = self.risk_params.get('stop_loss', 0.05)
+            base_position_size = risk_amount / (price * stop_percent)
+        
+        # Adjust for signal strength
+        position_size = base_position_size * signal_strength
+        
+        # Apply maximum position constraints
+        max_size = current_equity * max_position_size / price
+        
+        # Apply correlation-based adjustments
+        correlation_factor = self.calculate_correlation_factor(symbol)
+        position_size *= correlation_factor
+        
+        return min(position_size, max_size)
+    
+    def calculate_stop_distance(self, symbol: str, price: float, volatility: float) -> float:
+        """Calculate adaptive stop loss distance"""
+        # Base stop on ATR if available
+        atr = self.get_symbol_atr(symbol)
+        if atr > 0:
+            atr_multiplier = self.risk_params.get('atr_multiplier', 2.0)
+            return atr * atr_multiplier
+        
+        # Fallback to volatility-based stop
+        volatility_multiplier = self.risk_params.get('volatility_multiplier', 1.5)
+        return price * volatility * volatility_multiplier
+    
+    def get_symbol_atr(self, symbol: str) -> float:
+        """Get ATR for a symbol"""
+        # Implementation to get ATR from your data system
+        return 0  # Default if not available
+    
+    def get_symbol_volatility(self, symbol: str) -> float:
+        """Get volatility for a symbol"""
+        # Implementation to get volatility from your data system
+        return 0.01  # Default small value
+    
+    def calculate_correlation_factor(self, symbol: str) -> float:
+        """Calculate correlation-based position sizing factor"""
+        # Default to 1.0 if no other positions
+        if not self.positions:
+            return 1.0
+        
+        # Calculate correlations with existing positions
+        correlations = []
+        for pos in self.positions:
+            if pos['symbol'] != symbol:
+                # Get correlation between symbols
+                corr = self.get_symbols_correlation(symbol, pos['symbol'])
+                correlations.append(abs(corr))
+        
+        if not correlations:
+            return 1.0
+        
+        # Average correlation
+        avg_corr = sum(correlations) / len(correlations)
+        
+        # Reduce position size as correlation increases
+        correlation_factor = 1.0 - (avg_corr * 0.5)  # Linear reduction up to 50%
+        
+        return max(0.5, correlation_factor)  # Minimum 50% sizing
+    
+    def get_symbols_correlation(self, symbol1: str, symbol2: str) -> float:
+        """Get correlation between two symbols"""
+        # Implementation to get correlation from your data system
+        return 0.5  # Default medium correlation
+    
+    def calculate_recent_performance(self) -> float:
+        """Calculate recent performance trend"""
+        if len(self.equity_history) < 10:
+            return 0
+        
+        # Get recent equity values
+        recent_equity = [e['equity'] for e in self.equity_history[-10:]]
+        
+        # Calculate trend
+        if recent_equity[0] > 0:
+            return (recent_equity[-1] / recent_equity[0]) - 1
+        return 0
+    
+    def calculate_win_metrics(self) -> Tuple[float, float]:
+        """Calculate win rate and win/loss ratio"""
+        if not self.trades:
+            return 0.5, 1.0
+        
+        wins = [t for t in self.trades if t['pnl'] > 0]
+        losses = [t for t in self.trades if t['pnl'] <= 0]
+        
+        win_rate = len(wins) / len(self.trades)
+        
+        avg_win = sum(t['pnl'] for t in wins) / len(wins) if wins else 0
+        avg_loss = abs(sum(t['pnl'] for t in losses) / len(losses)) if losses else 1
+        
+        win_loss_ratio = avg_win / avg_loss if avg_loss > 0 else 1
+        
+        return win_rate, win_loss_ratio
+    
+    def get_current_equity(self) -> float:
+        """Get current equity"""
+        return self.equity_history[-1]['equity'] if self.equity_history else 10000
