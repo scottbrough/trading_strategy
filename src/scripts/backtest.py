@@ -17,6 +17,7 @@ from src.strategy.backtest import WalkForwardOptimizer
 from ..core.logger import log_manager
 from ..core.config import config
 from ..strategy.backtest import BacktestEngine
+BacktestEngine._instance = None # Reset singleton instance
 from ..data.database import db
 
 logger = log_manager.get_logger(__name__)

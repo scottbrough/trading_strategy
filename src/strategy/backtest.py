@@ -97,10 +97,11 @@ class BacktestEngine:
         """Initialize backtest state"""
         self.initial_capital = initial_capital or self.config.get('initial_balance', 10000)
         self.current_capital = self.initial_capital
-        self.positions = []
+        self.positions = []  # Make sure this is an empty list, not None
         self.trades = []
         self.equity_curve = [(datetime.now(), self.initial_capital)]
-        
+        logger.info(f"Initialized backtest with capital: {self.initial_capital}")
+            
     def _prepare_data(self, data_dict: Dict[str, pd.DataFrame],
                     start_date: datetime = None,
                     end_date: datetime = None) -> Dict[str, pd.DataFrame]:
@@ -124,6 +125,10 @@ class BacktestEngine:
                 continue
                 
             # Add required indicators if not present
+            # Calculate technical indicators
+            from ..data.processor import DataProcessor
+            data_processor = DataProcessor()
+            df_copy = data_processor.process_ohlcv(df_copy, 'unknown')  # 'unknown' is a placeholder   
             processed_data[symbol] = df_copy
             
         if not processed_data:
@@ -289,28 +294,46 @@ class BacktestEngine:
         
     def _update_equity_curve(self, timestamp: datetime):
         """Update equity curve with current portfolio value"""
-        # Current capital plus value of open positions
+        # Start with current cash
         portfolio_value = self.current_capital
+        total_unrealized_pnl = 0
         
-        for position in self.positions:
-            # Get current position value
-            current_price = position.get('current_price', position['entry_price'])
-            size = position['size']
-            side = position['side']
-            entry_price = position['entry_price']
-            
-            if side == 'long':
-                position_value = current_price * size
-                unrealized_pnl = (current_price - entry_price) * size
-            else:  # short
-                position_value = entry_price * size  # Margin for short
-                unrealized_pnl = (entry_price - current_price) * size
+        # Only calculate position values if we have positions
+        if self.positions:
+            logger.debug(f"Calculating equity with {len(self.positions)} positions")
+            for position in self.positions:
+                # Get current position value
+                current_price = position.get('current_price', position['entry_price'])
+                size = position['size']
+                side = position['side']
+                entry_price = position['entry_price']
                 
-            position['unrealized_pnl'] = unrealized_pnl
-            portfolio_value += unrealized_pnl
-            
-        self.equity_curve.append((timestamp, portfolio_value))
+                # Calculate unrealized P&L
+                if side == 'long':
+                    unrealized_pnl = (current_price - entry_price) * size
+                else:  # short
+                    unrealized_pnl = (entry_price - current_price) * size
+                    
+                position['unrealized_pnl'] = unrealized_pnl
+                total_unrealized_pnl += unrealized_pnl
         
+        # Calculate total portfolio value (cash + unrealized P&L)
+        portfolio_value = self.current_capital + total_unrealized_pnl
+        
+        logger.debug(f"Equity update: capital={self.current_capital}, unrealized_pnl={total_unrealized_pnl}, total={portfolio_value}")
+        
+        # Sanity check - portfolio value should equal current_capital if no positions
+        if not self.positions:
+            portfolio_value = self.current_capital
+        # Safety check - if no positions and no trades, portfolio should equal initial capital
+        if not self.positions and not self.trades and portfolio_value != self.initial_capital:
+            logger.warning(f"Portfolio value {portfolio_value} differs from initial capital {self.initial_capital} with no positions/trades - fixing")
+            portfolio_value = self.initial_capital  # Fix the value
+        
+        # Add to equity curve
+        self.equity_curve.append((timestamp, portfolio_value))
+
+
     def _calculate_metrics(self) -> Dict[str, Any]:
         """Calculate comprehensive performance metrics"""
         if not self.trades and not self.equity_curve:

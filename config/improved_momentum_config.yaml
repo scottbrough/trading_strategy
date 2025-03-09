@@ -1,0 +1,13 @@
+strategy:
+  rsi_oversold: 25
+  rsi_overbought: 75
+  adx_threshold: 30
+  risk_factor: 0.01
+  max_position_size: 0.05
+  min_position_size: 0.01
+  stop_loss: 0.035
+  profit_target: 0.07
+  require_volume_confirmation: true
+  require_trend_alignment: true
+  min_hours_between_trades: 4
+  max_trades_per_day: 3

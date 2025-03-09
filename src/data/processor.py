@@ -86,6 +86,8 @@ class DataProcessor:
             df['ema_9'] = talib.EMA(df['close'], timeperiod=9)
             df['ema_20'] = talib.EMA(df['close'], timeperiod=20)
             df['ema_50'] = talib.EMA(df['close'], timeperiod=50)
+            # Add this line right after the ema_50 calculation
+            df['ema_21'] = talib.EMA(df['close'], timeperiod=21)
             
             # MACD
             df['macd'], df['macd_signal'], df['macd_hist'] = talib.MACD(
